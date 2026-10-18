@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-0325">
+<meta name="build" content="20261019-0328">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -251,6 +251,51 @@
     font-size:13px; min-height:34px; padding:0 14px; border-radius:9px;
   }
 
+  /* ---------- 日期选择器 ---------- */
+  #d, .ed{ cursor:pointer; }
+  #d::placeholder{ color:var(--mute); }
+
+  #pickerBack{
+    position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:20;
+  }
+  #picker{
+    position:fixed; left:0; right:0; bottom:0; z-index:21;
+    max-width:520px; margin:0 auto;
+    background:var(--card);
+    border-radius:20px 20px 0 0;
+    padding:14px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    box-shadow:0 -10px 40px rgba(0,0,0,.25);
+  }
+  .pk-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .pk-head button{
+    background:none; border:0; color:var(--fg);
+    font-size:24px; line-height:1; padding:0 14px; min-height:36px;
+  }
+  #pkLabel{ font-size:15px; font-weight:600; }
+  .pk-week{
+    display:grid; grid-template-columns:repeat(7,1fr);
+    text-align:center; font-size:12px; color:var(--mute); margin-bottom:4px;
+  }
+  .pk-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+  .day{
+    background:none; border:0; border-radius:10px;
+    padding:4px 0 3px; min-height:50px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-size:15px; color:var(--fg);
+  }
+  .day em{ font-style:normal; font-size:10px; line-height:1.3; color:var(--mute); }
+  .day.sel{ background:var(--fg); color:var(--bg); }
+  .day.sel em{ color:var(--bg); opacity:.7; }
+  .day.today{ box-shadow:inset 0 0 0 1.5px var(--mute); }
+  .pk-time{ display:flex; align-items:center; justify-content:center; gap:6px; margin:10px 0 2px; }
+  .pk-time select{
+    font:inherit; font-size:16px; color:var(--fg);
+    background:var(--bg); border:1px solid var(--line);
+    border-radius:10px; padding:0 8px; min-height:38px;
+  }
+  .pk-acts{ display:flex; align-items:center; gap:8px; margin-top:12px; }
+  .pk-acts .spacer{ flex:1; }
+
   /* ---------- 提示 ---------- */
   #toast{
     position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 80px);
@@ -311,7 +356,7 @@
     <input id="t" type="text" placeholder="做什么…" aria-label="任务">
     <div class="line"></div>
     <div class="row2">
-      <input id="d" type="datetime-local" aria-label="截止时间">
+      <input id="d" type="text" readonly placeholder="选择时间" aria-label="截止时间">
       <button id="now" class="ghost" type="button">现在</button>
       <button id="b" type="submit">添加</button>
     </div>
@@ -357,6 +402,31 @@
   <div id="updBar" hidden>
     <span>有新版本</span>
     <button id="updGo" type="button">立即更新</button>
+  </div>
+
+  <div id="pickerBack" hidden></div>
+
+  <div id="picker" hidden>
+    <div class="pk-head">
+      <button id="pkPrev" type="button" aria-label="上个月">‹</button>
+      <span id="pkLabel"></span>
+      <button id="pkNext" type="button" aria-label="下个月">›</button>
+    </div>
+    <div class="pk-week">
+      <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+    </div>
+    <div class="pk-grid" id="pkGrid"></div>
+    <div class="pk-time">
+      <select id="pkH" aria-label="小时"></select>
+      <span>:</span>
+      <select id="pkM" aria-label="分钟"></select>
+    </div>
+    <div class="pk-acts">
+      <button id="pkToday" class="ghost" type="button">今天</button>
+      <span class="spacer"></span>
+      <button id="pkCancel" class="ghost" type="button">取消</button>
+      <button id="pkOk" type="button">确定</button>
+    </div>
   </div>
 
   <div id="toast" hidden></div>
@@ -411,11 +481,11 @@
     return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`;
   }
 
-  function defaultDue() {
+  function defaultDueMs() {
     const x = new Date();
     x.setHours(18, 0, 0, 0);
     if (x.getTime() <= Date.now()) x.setDate(x.getDate() + 1);
-    return toInput(x.getTime());
+    return x.getTime();
   }
 
   function fmt(ms) {
@@ -453,6 +523,109 @@
     }
     return `周${w} · ${s}`;
   }
+
+  /* ---------------- 日期选择器 ---------------- */
+  const picker = $('#picker'), pkBack = $('#pickerBack'), pkGrid = $('#pkGrid');
+  const pkLabel = $('#pkLabel'), pkH = $('#pkH'), pkM = $('#pkM');
+  const WD = '日一二三四五六';
+  let pkTarget = null;
+  let pkView = new Date();
+  let pkSel = { y: 0, m: 0, d: 0 };
+
+  (function initSelects() {
+    for (let h = 0; h < 24; h++) {
+      const o = document.createElement('option');
+      o.value = String(h);
+      o.textContent = String(h).padStart(2, '0');
+      pkH.appendChild(o);
+    }
+    for (let m = 0; m < 60; m++) {
+      const o = document.createElement('option');
+      o.value = String(m);
+      o.textContent = String(m).padStart(2, '0');
+      pkM.appendChild(o);
+    }
+  })();
+
+  function applyDue(input, ms) {
+    input.dataset.v = toInput(ms);
+    input.value = toInput(ms).replace('T', ' ');
+    if (input.id === 'd') {
+      updateWd();
+    } else {
+      const row = input.closest('.row');
+      const box = row && row.querySelector('.ewd');
+      if (box) box.textContent = wdText(ms);
+    }
+  }
+
+  function openPicker(input) {
+    pkTarget = input;
+    let base = new Date(input.dataset.v || toInput(Date.now()));
+    if (isNaN(base.getTime())) base = new Date();
+    pkSel = { y: base.getFullYear(), m: base.getMonth(), d: base.getDate() };
+    pkView = new Date(pkSel.y, pkSel.m, 1);
+    pkH.value = String(base.getHours());
+    pkM.value = String(base.getMinutes());
+    renderPicker();
+    pkBack.hidden = false;
+    picker.hidden = false;
+  }
+
+  function closePicker() {
+    picker.hidden = true;
+    pkBack.hidden = true;
+    pkTarget = null;
+  }
+
+  function renderPicker() {
+    const y = pkView.getFullYear(), m = pkView.getMonth();
+    pkLabel.textContent = `${y} 年 ${m + 1} 月`;
+    const first = new Date(y, m, 1).getDay();
+    const days = new Date(y, m + 1, 0).getDate();
+    const today = new Date();
+    let html = '';
+    for (let i = 0; i < first; i++) html += '<span></span>';
+    for (let dd = 1; dd <= days; dd++) {
+      const sel = (y === pkSel.y && m === pkSel.m && dd === pkSel.d);
+      const isToday = (y === today.getFullYear() && m === today.getMonth() && dd === today.getDate());
+      const w = WD[new Date(y, m, dd).getDay()];
+      html += `<button type="button" class="day${sel ? ' sel' : ''}${isToday ? ' today' : ''}" data-d="${dd}"><span>${dd}</span><em>${w}</em></button>`;
+    }
+    pkGrid.innerHTML = html;
+  }
+
+  pkGrid.addEventListener('click', e => {
+    const b = e.target.closest('.day');
+    if (!b) return;
+    pkSel.y = pkView.getFullYear();
+    pkSel.m = pkView.getMonth();
+    pkSel.d = parseInt(b.dataset.d, 10);
+    renderPicker();
+  });
+
+  $('#pkPrev').addEventListener('click', () => { pkView.setMonth(pkView.getMonth() - 1); renderPicker(); });
+  $('#pkNext').addEventListener('click', () => { pkView.setMonth(pkView.getMonth() + 1); renderPicker(); });
+
+  $('#pkToday').addEventListener('click', () => {
+    const n = new Date();
+    pkSel = { y: n.getFullYear(), m: n.getMonth(), d: n.getDate() };
+    pkView = new Date(pkSel.y, pkSel.m, 1);
+    pkH.value = String(n.getHours());
+    pkM.value = String(n.getMinutes());
+    renderPicker();
+  });
+
+  $('#pkCancel').addEventListener('click', closePicker);
+  pkBack.addEventListener('click', closePicker);
+
+  $('#pkOk').addEventListener('click', () => {
+    if (pkTarget) {
+      const dt = new Date(pkSel.y, pkSel.m, pkSel.d, parseInt(pkH.value, 10), parseInt(pkM.value, 10));
+      applyDue(pkTarget, dt.getTime());
+    }
+    closePicker();
+  });
 
   /* ---------------- iCalendar ---------------- */
   const icsEsc = s => String(s)
@@ -558,7 +731,7 @@
     return `<li class="row editing" data-id="${it.id}">
       <div class="editor">
         <input class="et" type="text" value="${esc(it.title)}" aria-label="任务">
-        <input class="ed" type="datetime-local" value="${toInput(it.due)}" aria-label="截止时间">
+        <input class="ed" type="text" readonly value="${toInput(it.due).replace('T', ' ')}" data-v="${toInput(it.due)}" aria-label="截止时间">
         <div class="ewd">${wdText(it.due)}</div>
         <div class="eacts">
           <button class="del ghost danger" type="button">删除</button>
@@ -651,30 +824,27 @@
     e.preventDefault();
     const title = t.value.trim();
     if (!title) { t.focus(); return; }
-    if (!d.value) { d.focus(); return; }
-    const due = new Date(d.value).getTime();
-    if (!Number.isFinite(due)) { d.focus(); return; }
+    const raw = d.dataset.v;
+    if (!raw) { openPicker(d); return; }
+    const due = new Date(raw).getTime();
+    if (!Number.isFinite(due)) { openPicker(d); return; }
 
     items.push({ id: uid(), title, due, done: false, doneAt: 0, created: Date.now() });
     save();
     t.value = '';
-    d.value = defaultDue();
-    updateWd();
+    applyDue(d, defaultDueMs());
     render();
     t.focus();
   });
 
   function updateWd() {
-    wd.textContent = d.value ? wdText(new Date(d.value).getTime()) : '';
+    const raw = d.dataset.v;
+    wd.textContent = raw ? wdText(new Date(raw).getTime()) : '';
   }
 
-  d.addEventListener('input', updateWd);
-  d.addEventListener('change', updateWd);
+  d.addEventListener('click', () => openPicker(d));
 
-  nowBtn.addEventListener('click', () => {
-    d.value = toInput(Date.now());
-    updateWd();
-  });
+  nowBtn.addEventListener('click', () => applyDue(d, Date.now()));
 
   /* ---------------- 行内交互 ---------------- */
   function onRow(e) {
@@ -686,7 +856,8 @@
     if (e.target.closest('.save')) {
       const title = row.querySelector('.et').value.trim();
       if (title) it.title = title;
-      const due = new Date(row.querySelector('.ed').value).getTime();
+      const rawDue = row.querySelector('.ed').dataset.v;
+      const due = rawDue ? new Date(rawDue).getTime() : NaN;
       if (Number.isFinite(due)) it.due = due;
       save();
       editing = null;
@@ -735,11 +906,8 @@
   list.addEventListener('click', onRow);
   doneList.addEventListener('click', onRow);
 
-  list.addEventListener('input', e => {
-    if (e.target.classList.contains('ed')) {
-      const box = e.target.closest('.row').querySelector('.ewd');
-      if (box) box.textContent = e.target.value ? wdText(new Date(e.target.value).getTime()) : '';
-    }
+  list.addEventListener('click', e => {
+    if (e.target.classList.contains('ed')) openPicker(e.target);
   });
 
   list.addEventListener('keydown', e => {
@@ -835,8 +1003,7 @@
     if (document.visibilityState === 'visible') setTimeout(maybeAutoCheck, 600);
   });
 
-  d.value = defaultDue();
-  updateWd();
+  applyDue(d, defaultDueMs());
   syncOffUI();
   render();
   setInterval(() => { if (!editing) render(); }, 60000);
