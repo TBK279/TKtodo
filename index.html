@@ -97,8 +97,6 @@
   }
   #d:focus{ border-color:var(--fg); }
 
-  .acts{ display:flex; gap:8px; }
-
   button{
     font:inherit; font-size:15px; font-weight:500;
     min-height:44px; padding:0 18px;
@@ -160,6 +158,28 @@
   }
   .cal:active{ opacity:.5; }
 
+  /* ---------- 就地编辑 ---------- */
+  .row.editing{ cursor:default; }
+  .editor{
+    width:100%;
+    display:flex; flex-direction:column; gap:8px;
+    animation:slideIn .18s ease-out;
+  }
+  @keyframes slideIn{
+    from{ opacity:0; transform:translateY(-6px); }
+    to{ opacity:1; transform:none; }
+  }
+  .editor input{
+    font:inherit; font-size:16px; color:inherit; width:100%;
+    background:var(--bg);
+    border:1px solid var(--line); border-radius:11px;
+    padding:0 12px; min-height:44px; outline:none;
+  }
+  .editor input:focus{ border-color:var(--fg); }
+  .eacts{ display:flex; align-items:center; gap:8px; }
+  .eacts .spacer{ flex:1; }
+  .eacts button{ min-height:38px; font-size:14px; padding:0 14px; border-radius:10px; }
+
   .empty{
     text-align:center; color:var(--mute);
     padding:34px 0; font-size:14px;
@@ -196,6 +216,10 @@
     padding:15px 0;
   }
   summary::-webkit-details-marker{ display:none; }
+  #clearDone{
+    display:block; margin:4px auto 14px;
+    font-size:13px; min-height:34px; padding:0 14px; border-radius:9px;
+  }
 
   /* ---------- 提示 ---------- */
   #toast{
@@ -221,11 +245,7 @@
     <div class="line"></div>
     <div class="row2">
       <input id="d" type="datetime-local" aria-label="截止时间">
-      <div class="acts">
-        <button id="cancel" class="ghost" type="button" hidden>取消</button>
-        <button id="del" class="ghost danger" type="button" hidden>删除</button>
-        <button id="b" type="submit">添加</button>
-      </div>
+      <button id="b" type="submit">添加</button>
     </div>
   </form>
 
@@ -258,6 +278,7 @@
   <details id="doneBox" hidden>
     <summary id="summary"></summary>
     <ul id="doneList"></ul>
+    <button id="clearDone" class="ghost danger" type="button">清空已完成</button>
   </details>
 
   <div id="toast" hidden></div>
@@ -269,8 +290,8 @@
   const OFF_KEY = 'ddl.off.v1';
   const $ = s => document.querySelector(s);
   const f = $('#f'), t = $('#t'), d = $('#d'), b = $('#b');
-  const cancelBtn = $('#cancel'), delBtn = $('#del');
   const list = $('#list'), doneBox = $('#doneBox'), doneList = $('#doneList'), summary = $('#summary');
+  const clearBtn = $('#clearDone');
   const selOff = $('#off'), customBox = $('#custom'), cn = $('#cn'), cu = $('#cu'), allBtn = $('#all');
   const toastEl = $('#toast');
 
@@ -403,20 +424,7 @@
   const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-  async function deliver(ics, name) {
-    // Android：优先走系统分享面板，把日历文件直接交给日历 App
-    if (/Android/i.test(navigator.userAgent)) {
-      try {
-        const file = new File([ics], name, { type: 'text/calendar' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: name });
-          return;
-        }
-      } catch (err) {
-        if (err && err.name === 'AbortError') return;
-      }
-    }
-
+  function deliver(ics, name) {
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -449,7 +457,24 @@
   }
 
   /* ---------------- 渲染 ---------------- */
+  function editorHTML(it) {
+    return `<li class="row editing" data-id="${it.id}">
+      <div class="editor">
+        <input class="et" type="text" value="${esc(it.title)}" aria-label="任务">
+        <input class="ed" type="datetime-local" value="${toInput(it.due)}" aria-label="截止时间">
+        <div class="eacts">
+          <button class="del ghost danger" type="button">删除</button>
+          <span class="spacer"></span>
+          <button class="cancel ghost" type="button">取消</button>
+          <button class="save" type="button">保存</button>
+        </div>
+      </div>
+    </li>`;
+  }
+
   function rowHTML(it, now) {
+    if (it.id === editing) return editorHTML(it);
+
     const over = !it.done && it.due < now;
     const calBtn = it.done ? '' : `<button class="cal" type="button" aria-label="加入日历">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -480,26 +505,7 @@
     doneBox.open = open;
     summary.textContent = `已完成 ${dn.length}`;
     allBtn.disabled = act.length === 0;
-  }
-
-  function reset() {
-    editing = null;
-    t.value = '';
-    d.value = defaultDue();
-    b.textContent = '添加';
-    cancelBtn.hidden = true;
-    delBtn.hidden = true;
-  }
-
-  function edit(it) {
-    editing = it.id;
-    t.value = it.title;
-    d.value = toInput(it.due);
-    b.textContent = '保存';
-    cancelBtn.hidden = false;
-    delBtn.hidden = false;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    t.focus();
+    clearBtn.hidden = dn.length === 0;
   }
 
   /* ---------------- 提醒设置 ---------------- */
@@ -541,7 +547,7 @@
 
   allBtn.addEventListener('click', exportAll);
 
-  /* ---------------- 交互 ---------------- */
+  /* ---------------- 新增 ---------------- */
   f.addEventListener('submit', e => {
     e.preventDefault();
     const title = t.value.trim();
@@ -550,27 +556,53 @@
     const due = new Date(d.value).getTime();
     if (!Number.isFinite(due)) { d.focus(); return; }
 
-    if (editing) {
-      const it = items.find(x => x.id === editing);
-      if (it) { it.title = title; it.due = due; }
-    } else {
-      items.push({ id: uid(), title, due, done: false, doneAt: 0, created: Date.now() });
-    }
+    items.push({ id: uid(), title, due, done: false, doneAt: 0, created: Date.now() });
     save();
-    reset();
+    t.value = '';
+    d.value = defaultDue();
     render();
+    t.focus();
   });
 
+  /* ---------------- 行内交互 ---------------- */
   function onRow(e) {
     const row = e.target.closest('.row');
     if (!row) return;
     const it = items.find(x => x.id === row.dataset.id);
     if (!it) return;
 
+    if (e.target.closest('.save')) {
+      const title = row.querySelector('.et').value.trim();
+      if (title) it.title = title;
+      const due = new Date(row.querySelector('.ed').value).getTime();
+      if (Number.isFinite(due)) it.due = due;
+      save();
+      editing = null;
+      render();
+      return;
+    }
+
+    if (e.target.closest('.cancel')) {
+      editing = null;
+      render();
+      return;
+    }
+
+    if (e.target.closest('.del')) {
+      items = items.filter(x => x.id !== it.id);
+      editing = null;
+      save();
+      render();
+      return;
+    }
+
+    if (e.target.closest('.editor')) return;
+
     if (e.target.closest('.cal')) {
       exportOne(it);
       return;
     }
+
     if (e.target.closest('.check')) {
       it.done = !it.done;
       it.doneAt = it.done ? Date.now() : 0;
@@ -578,28 +610,43 @@
       render();
       return;
     }
-    edit(it);
+
+    editing = (editing === it.id) ? null : it.id;
+    render();
+    const input = list.querySelector('.editor .et');
+    if (input) {
+      input.focus();
+      try { input.setSelectionRange(input.value.length, input.value.length); } catch (err) {}
+    }
   }
 
   list.addEventListener('click', onRow);
   doneList.addEventListener('click', onRow);
 
-  delBtn.addEventListener('click', () => {
-    items = items.filter(x => x.id !== editing);
-    save();
-    reset();
-    render();
+  list.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.classList.contains('et')) {
+      e.preventDefault();
+      const saveBtn = e.target.closest('.row').querySelector('.save');
+      if (saveBtn) saveBtn.click();
+    }
+    if (e.key === 'Escape' && e.target.classList.contains('et')) {
+      editing = null;
+      render();
+    }
   });
 
-  cancelBtn.addEventListener('click', () => {
-    reset();
-    t.focus();
+  clearBtn.addEventListener('click', () => {
+    if (!items.some(x => x.done)) return;
+    if (!confirm('清空全部已完成的任务？')) return;
+    items = items.filter(x => !x.done);
+    save();
+    render();
   });
 
   d.value = defaultDue();
   syncOffUI();
   render();
-  setInterval(render, 60000);
+  setInterval(() => { if (!editing) render(); }, 60000);
 })();
 </script>
 </body>
