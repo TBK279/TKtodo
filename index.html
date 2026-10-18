@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="待办">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme:dark)">
+<title>待办</title>
+<style>
+  :root{
+    --bg:#f5f5f7;
+    --card:#ffffff;
+    --fg:#111114;
+    --mute:#8a8a90;
+    --line:#ebebef;
+    --over:#d9363e;
+    --btn:#111114;
+    --btn-fg:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#000000;
+      --card:#151517;
+      --fg:#f2f2f4;
+      --mute:#8a8a90;
+      --line:#2b2b30;
+      --over:#ff5f5f;
+      --btn:#f2f2f4;
+      --btn-fg:#0b0b0d;
+    }
+  }
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0;
+    min-height:100vh;
+    min-height:100dvh;
+    display:flex;
+    padding:calc(env(safe-area-inset-top, 0px) + 32px) 16px calc(env(safe-area-inset-bottom, 0px) + 32px);
+    background:var(--bg); color:var(--fg);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent;
+  }
+  main{
+    margin:auto;
+    width:100%;
+    max-width:500px;
+  }
+  h1{
+    margin:0 0 22px;
+    text-align:center;
+    font-size:21px;
+    font-weight:700;
+    letter-spacing:.5px;
+  }
+
+  /* ---------- 输入卡片 ---------- */
+  form{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:0 18px 16px;
+  }
+  #t{
+    display:block; width:100%;
+    font:inherit; font-size:18px; font-weight:600; color:inherit;
+    text-align:center;
+    background:none; border:0; outline:none;
+    padding:18px 0 16px;
+    min-height:56px;
+    -webkit-appearance:none; appearance:none;
+  }
+  #t::placeholder{ color:var(--mute); font-weight:400; }
+  #t:focus::placeholder{ opacity:.45; }
+
+  .line{ height:1px; background:var(--line); }
+
+  .row2{
+    display:flex; flex-wrap:wrap; gap:10px;
+    align-items:center; justify-content:center;
+    padding-top:16px;
+  }
+  #d{
+    font:inherit; font-size:16px; color:inherit;
+    text-align:center;
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 14px; min-height:44px;
+    outline:none;
+    -webkit-appearance:none; appearance:none;
+  }
+  #d:focus{ border-color:var(--fg); }
+
+  .acts{ display:flex; gap:8px; }
+
+  button{
+    font:inherit; font-size:15px; font-weight:500;
+    min-height:44px; padding:0 18px;
+    border:0; border-radius:12px; cursor:pointer;
+    background:var(--btn); color:var(--btn-fg);
+  }
+  button:active{ opacity:.62; }
+  .ghost{ background:none; color:var(--mute); border:1px solid var(--line); }
+  .danger{ color:var(--over); }
+
+  /* ---------- 列表卡片 ---------- */
+  ul{ list-style:none; margin:0; padding:0; }
+
+  #list{
+    margin-top:14px;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:2px 18px;
+  }
+  .row{
+    display:flex; align-items:center; gap:10px;
+    padding:13px 0; border-top:1px solid var(--line); cursor:pointer;
+  }
+  #list .row:first-child{ border-top:0; }
+
+  .check{
+    flex:0 0 40px; width:40px; height:40px; min-height:40px;
+    margin:-7px -8px -7px -10px; padding:0;
+    background:none; border:0; border-radius:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .check i{
+    width:21px; height:21px; border-radius:50%;
+    border:1.5px solid var(--mute);
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s, border-color .15s;
+  }
+  .check.on i{ background:var(--fg); border-color:var(--fg); }
+  .check.on i::after{
+    content:""; width:4px; height:8px;
+    border:solid var(--card); border-width:0 2px 2px 0;
+    transform:rotate(45deg) translate(-1px,-1px);
+  }
+
+  .txt{ flex:1; min-width:0; }
+  .title{ font-size:16px; word-break:break-word; }
+  .meta{ display:flex; gap:10px; margin-top:3px; font-size:13px; color:var(--mute); }
+  .over .meta{ color:var(--over); }
+  .done .title{ color:var(--mute); text-decoration:line-through; }
+
+  .empty{
+    text-align:center; color:var(--mute);
+    padding:34px 0; font-size:14px;
+  }
+
+  /* ---------- 已完成 ---------- */
+  details{
+    margin-top:14px;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:0 18px 2px;
+  }
+  summary{
+    list-style:none; cursor:pointer; user-select:none;
+    text-align:center; font-size:13px; color:var(--mute);
+    padding:15px 0;
+  }
+  summary::-webkit-details-marker{ display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>TKtodo</h1>
+  <form id="f" autocomplete="off">
+    <input id="t" type="text" placeholder="做什么…" aria-label="任务">
+    <div class="line"></div>
+    <div class="row2">
+      <input id="d" type="datetime-local" aria-label="截止时间">
+      <div class="acts">
+        <button id="cancel" class="ghost" type="button" hidden>取消</button>
+        <button id="del" class="ghost danger" type="button" hidden>删除</button>
+        <button id="b" type="submit">添加</button>
+      </div>
+    </div>
+  </form>
+
+  <ul id="list"></ul>
+
+  <details id="doneBox" hidden>
+    <summary id="summary"></summary>
+    <ul id="doneList"></ul>
+  </details>
+</main>
+
+<script>
+(() => {
+  const KEY = 'ddl.v1';
+  const $ = s => document.querySelector(s);
+  const f = $('#f'), t = $('#t'), d = $('#d'), b = $('#b');
+  const cancelBtn = $('#cancel'), delBtn = $('#del');
+  const list = $('#list'), doneBox = $('#doneBox'), doneList = $('#doneList'), summary = $('#summary');
+
+  let items = [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(KEY) || '[]');
+    if (Array.isArray(parsed)) items = parsed;
+  } catch (e) {}
+
+  let editing = null;
+
+  const save = () => localStorage.setItem(KEY, JSON.stringify(items));
+  const pad = n => String(n).padStart(2, '0');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const uid = () => (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  function toInput(ms) {
+    const x = new Date(ms);
+    return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`;
+  }
+
+  function defaultDue() {
+    const x = new Date();
+    x.setHours(18, 0, 0, 0);
+    if (x.getTime() <= Date.now()) x.setDate(x.getDate() + 1);
+    return toInput(x.getTime());
+  }
+
+  function fmt(ms) {
+    const x = new Date(ms);
+    const md = `${pad(x.getMonth() + 1)}-${pad(x.getDate())} ${pad(x.getHours())}:${pad(x.getMinutes())}`;
+    return x.getFullYear() === new Date().getFullYear() ? md : `${x.getFullYear()}-${md}`;
+  }
+
+  function rel(ms, now) {
+    let diff = ms - now;
+    const over = diff < 0;
+    diff = Math.abs(diff);
+    if (diff < 60000) return over ? '刚刚逾期' : '马上';
+    const day = Math.floor(diff / 86400000);
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor(diff / 60000);
+    const s = day > 0 ? `${day} 天` : h > 0 ? `${h} 小时` : `${m} 分钟`;
+    return over ? `逾期 ${s}` : `还有 ${s}`;
+  }
+
+  function rowHTML(it, now) {
+    const over = !it.done && it.due < now;
+    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}" data-id="${it.id}">
+      <button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>
+      <div class="txt">
+        <div class="title">${esc(it.title)}</div>
+        <div class="meta"><span>${fmt(it.due)}</span>${it.done ? '' : `<span>${rel(it.due, now)}</span>`}</div>
+      </div>
+    </li>`;
+  }
+
+  function render() {
+    const now = Date.now();
+    const act = items.filter(x => !x.done).sort((a, b) => a.due - b.due);
+    const dn = items.filter(x => x.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    const open = doneBox.open;
+
+    list.innerHTML = act.length
+      ? act.map(x => rowHTML(x, now)).join('')
+      : '<li class="empty">还没有待办</li>';
+    doneList.innerHTML = dn.map(x => rowHTML(x, now)).join('');
+
+    doneBox.hidden = dn.length === 0;
+    doneBox.open = open;
+    summary.textContent = `已完成 ${dn.length}`;
+  }
+
+  function reset() {
+    editing = null;
+    t.value = '';
+    d.value = defaultDue();
+    b.textContent = '添加';
+    cancelBtn.hidden = true;
+    delBtn.hidden = true;
+  }
+
+  function edit(it) {
+    editing = it.id;
+    t.value = it.title;
+    d.value = toInput(it.due);
+    b.textContent = '保存';
+    cancelBtn.hidden = false;
+    delBtn.hidden = false;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    t.focus();
+  }
+
+  f.addEventListener('submit', e => {
+    e.preventDefault();
+    const title = t.value.trim();
+    if (!title) { t.focus(); return; }
+    if (!d.value) { d.focus(); return; }
+    const due = new Date(d.value).getTime();
+    if (!Number.isFinite(due)) { d.focus(); return; }
+
+    if (editing) {
+      const it = items.find(x => x.id === editing);
+      if (it) { it.title = title; it.due = due; }
+    } else {
+      items.push({ id: uid(), title, due, done: false, doneAt: 0, created: Date.now() });
+    }
+    save();
+    reset();
+    render();
+  });
+
+  function onRow(e) {
+    const row = e.target.closest('.row');
+    if (!row) return;
+    const it = items.find(x => x.id === row.dataset.id);
+    if (!it) return;
+
+    if (e.target.closest('.check')) {
+      it.done = !it.done;
+      it.doneAt = it.done ? Date.now() : 0;
+      save();
+      render();
+    } else {
+      edit(it);
+    }
+  }
+
+  list.addEventListener('click', onRow);
+  doneList.addEventListener('click', onRow);
+
+  delBtn.addEventListener('click', () => {
+    items = items.filter(x => x.id !== editing);
+    save();
+    reset();
+    render();
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    reset();
+    t.focus();
+  });
+
+  d.value = defaultDue();
+  render();
+  setInterval(render, 60000);
+})();
+</script>
+</body>
+</html>
