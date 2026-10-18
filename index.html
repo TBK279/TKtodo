@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
+<meta name="build" content="20261019-0314">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -258,6 +259,16 @@
   @media (prefers-color-scheme: dark){
     #toast{ background:#f2f2f4; color:#101012; }
   }
+
+  /* ---------- 检查更新 ---------- */
+  .foot{ margin-top:20px; text-align:center; }
+  .link{
+    background:none; border:0; padding:6px 12px;
+    font:inherit; font-size:13px; color:var(--mute);
+    cursor:pointer; text-decoration:underline; text-underline-offset:3px;
+  }
+  .link:active{ opacity:.55; }
+  .link:disabled{ opacity:.55; cursor:default; }
 </style>
 </head>
 <body>
@@ -303,6 +314,10 @@
     <ul id="doneList"></ul>
     <button id="clearDone" class="ghost danger" type="button">清空已完成</button>
   </details>
+
+  <div class="foot">
+    <button id="upd" class="link" type="button">检查更新</button>
+  </div>
 
   <div id="toast" hidden></div>
 </main>
@@ -666,6 +681,35 @@
     save();
     render();
   });
+
+  /* ---------------- 检查更新 ---------------- */
+  const updBtn = $('#upd');
+
+  async function checkUpdate() {
+    updBtn.disabled = true;
+    updBtn.textContent = '检查中…';
+    try {
+      const res = await fetch(location.pathname + '?t=' + Date.now(), { cache: 'no-store' });
+      const html = await res.text();
+      const found = html.match(/<meta name="build" content="([^"]+)"/);
+      const current = document.querySelector('meta[name="build"]').content;
+      if (found && found[1] && found[1] !== current) {
+        updBtn.textContent = '发现新版本，正在更新…';
+        location.replace(location.pathname + '?v=' + Date.now());
+        return;
+      }
+      updBtn.textContent = '已是最新版本';
+      setTimeout(() => {
+        updBtn.textContent = '检查更新';
+        updBtn.disabled = false;
+      }, 1800);
+    } catch (err) {
+      updBtn.textContent = '检查失败，点此重试';
+      updBtn.disabled = false;
+    }
+  }
+
+  updBtn.addEventListener('click', checkUpdate);
 
   d.value = defaultDue();
   syncOffUI();
