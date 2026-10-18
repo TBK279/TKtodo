@@ -94,7 +94,6 @@
     border-radius:12px;
     padding:0 14px; min-height:44px;
     outline:none;
-    -webkit-appearance:none; appearance:none;
   }
   #d:focus{ border-color:var(--fg); }
 
@@ -107,6 +106,7 @@
     background:var(--btn); color:var(--btn-fg);
   }
   button:active{ opacity:.62; }
+  button:disabled{ opacity:.35; cursor:default; }
   .ghost{ background:none; color:var(--mute); border:1px solid var(--line); }
   .danger{ color:var(--over); }
 
@@ -151,10 +151,36 @@
   .over .meta{ color:var(--over); }
   .done .title{ color:var(--mute); text-decoration:line-through; }
 
+  .cal{
+    flex:0 0 40px; width:40px; height:40px; min-height:40px;
+    margin:-7px -10px -7px 0; padding:0;
+    background:none; border:0; border-radius:0;
+    color:var(--mute);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .cal:active{ opacity:.5; }
+
   .empty{
     text-align:center; color:var(--mute);
     padding:34px 0; font-size:14px;
   }
+
+  /* ---------- 日历工具条 ---------- */
+  .tools{
+    margin-top:12px;
+    display:flex; align-items:center; justify-content:center;
+    flex-wrap:wrap; gap:8px;
+    font-size:14px; color:var(--mute);
+  }
+  .tools select, .tools input{
+    font:inherit; font-size:16px; color:var(--fg);
+    background:var(--bg);
+    border:1px solid var(--line); border-radius:10px;
+    padding:0 8px; min-height:36px; outline:none;
+  }
+  .tools select:focus, .tools input:focus{ border-color:var(--fg); }
+  #cn{ width:58px; text-align:center; }
+  #all{ font-size:14px; min-height:36px; padding:0 14px; border-radius:10px; }
 
   /* ---------- 已完成 ---------- */
   details{
@@ -170,6 +196,21 @@
     padding:15px 0;
   }
   summary::-webkit-details-marker{ display:none; }
+
+  /* ---------- 提示 ---------- */
+  #toast{
+    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 26px);
+    transform:translateX(-50%);
+    max-width:min(88vw,420px);
+    background:#1c1c1f; color:#f4f4f6;
+    font-size:14px; line-height:1.45;
+    padding:11px 16px; border-radius:12px;
+    box-shadow:0 6px 24px rgba(0,0,0,.22);
+    z-index:9; text-align:center; white-space:pre-line;
+  }
+  @media (prefers-color-scheme: dark){
+    #toast{ background:#f2f2f4; color:#101012; }
+  }
 </style>
 </head>
 <body>
@@ -190,19 +231,48 @@
 
   <ul id="list"></ul>
 
+  <div class="tools">
+    <span>提醒</span>
+    <select id="off" aria-label="提前多久提醒">
+      <option value="0">不提醒</option>
+      <option value="15">提前 15 分钟</option>
+      <option value="30">提前 30 分钟</option>
+      <option value="60">提前 1 小时</option>
+      <option value="180">提前 3 小时</option>
+      <option value="1440">提前 1 天</option>
+      <option value="2880">提前 2 天</option>
+      <option value="4320">提前 3 天</option>
+      <option value="custom">自定义…</option>
+    </select>
+    <span id="custom" hidden>
+      <input id="cn" type="number" min="1" max="999" inputmode="numeric" value="6" aria-label="数量">
+      <select id="cu" aria-label="单位">
+        <option value="1">分钟前</option>
+        <option value="60" selected>小时前</option>
+        <option value="1440">天前</option>
+      </select>
+    </span>
+    <button id="all" class="ghost" type="button">全部导入日历</button>
+  </div>
+
   <details id="doneBox" hidden>
     <summary id="summary"></summary>
     <ul id="doneList"></ul>
   </details>
+
+  <div id="toast" hidden></div>
 </main>
 
 <script>
 (() => {
   const KEY = 'ddl.v1';
+  const OFF_KEY = 'ddl.off.v1';
   const $ = s => document.querySelector(s);
   const f = $('#f'), t = $('#t'), d = $('#d'), b = $('#b');
   const cancelBtn = $('#cancel'), delBtn = $('#del');
   const list = $('#list'), doneBox = $('#doneBox'), doneList = $('#doneList'), summary = $('#summary');
+  const selOff = $('#off'), customBox = $('#custom'), cn = $('#cn'), cu = $('#cu'), allBtn = $('#all');
+  const toastEl = $('#toast');
 
   let items = [];
   try {
@@ -210,14 +280,31 @@
     if (Array.isArray(parsed)) items = parsed;
   } catch (e) {}
 
+  let offMin = 1440;
+  try {
+    const v = parseInt(localStorage.getItem(OFF_KEY), 10);
+    if (Number.isFinite(v) && v >= 0) offMin = v;
+  } catch (e) {}
+
   let editing = null;
+  let toastTimer = 0;
+
+  const PRESETS = [0, 15, 30, 60, 180, 1440, 2880, 4320];
 
   const save = () => localStorage.setItem(KEY, JSON.stringify(items));
+  const saveOff = () => localStorage.setItem(OFF_KEY, String(offMin));
   const pad = n => String(n).padStart(2, '0');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const uid = () => (window.crypto && crypto.randomUUID)
     ? crypto.randomUUID()
     : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 4200);
+  }
 
   function toInput(ms) {
     const x = new Date(ms);
@@ -249,14 +336,119 @@
     return over ? `逾期 ${s}` : `还有 ${s}`;
   }
 
+  /* ---------------- iCalendar ---------------- */
+  const icsEsc = s => String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
+
+  function icsDate(ms) {
+    const x = new Date(ms);
+    return `${x.getUTCFullYear()}${pad(x.getUTCMonth() + 1)}${pad(x.getUTCDate())}T${pad(x.getUTCHours())}${pad(x.getUTCMinutes())}${pad(x.getUTCSeconds())}Z`;
+  }
+
+  function triggerStr(min) {
+    if (min <= 0) return null;
+    if (min % 1440 === 0) return `-P${min / 1440}D`;
+    if (min % 60 === 0) return `-PT${min / 60}H`;
+    return `-PT${min}M`;
+  }
+
+  function fold(line) {
+    const enc = new TextEncoder();
+    let out = '', bytes = 0;
+    for (const ch of line) {
+      const n = enc.encode(ch).length;
+      if (bytes + n > 74) { out += '\r\n '; bytes = 1; }
+      out += ch;
+      bytes += n;
+    }
+    return out;
+  }
+
+  function buildICS(arr) {
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//TKtodo//CN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH'
+    ];
+    const stamp = icsDate(Date.now());
+    const trig = triggerStr(offMin);
+
+    for (const it of arr) {
+      lines.push('BEGIN:VEVENT');
+      lines.push('UID:' + it.id + '@tktodo');
+      lines.push('DTSTAMP:' + stamp);
+      lines.push('DTSTART:' + icsDate(it.due));
+      lines.push('DTEND:' + icsDate(it.due + 30 * 60000));
+      lines.push('SUMMARY:' + icsEsc(it.title));
+      lines.push('DESCRIPTION:' + icsEsc('截止：' + fmt(it.due)));
+      if (trig) {
+        lines.push('BEGIN:VALARM');
+        lines.push('TRIGGER:' + trig);
+        lines.push('ACTION:DISPLAY');
+        lines.push('DESCRIPTION:' + icsEsc(it.title));
+        lines.push('END:VALARM');
+      }
+      lines.push('END:VEVENT');
+    }
+
+    lines.push('END:VCALENDAR');
+    return lines.map(fold).join('\r\n') + '\r\n';
+  }
+
+  const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  function deliver(ics, name) {
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.rel = 'noopener';
+    if (!isIOS()) a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    if (isIOS()) {
+      toast('已生成日历文件。若没有自动弹出，请到「文件 → 下载」里点开它。');
+    } else {
+      toast('已下载 ' + name + '\n打开它并选择「日历」导入即可。');
+    }
+  }
+
+  const safeName = s => String(s).replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 40) || 'TKtodo';
+
+  function exportOne(it) {
+    deliver(buildICS([it]), safeName(it.title) + '.ics');
+  }
+
+  function exportAll() {
+    const act = items.filter(x => !x.done);
+    if (!act.length) return;
+    const now = new Date();
+    deliver(buildICS(act), `TKtodo-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.ics`);
+  }
+
+  /* ---------------- 渲染 ---------------- */
   function rowHTML(it, now) {
     const over = !it.done && it.due < now;
+    const calBtn = it.done ? '' : `<button class="cal" type="button" aria-label="加入日历">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="8.3"/><path d="M12 7.6V12l3 1.9"/>
+        </svg>
+      </button>`;
     return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}" data-id="${it.id}">
       <button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>
       <div class="txt">
         <div class="title">${esc(it.title)}</div>
         <div class="meta"><span>${fmt(it.due)}</span>${it.done ? '' : `<span>${rel(it.due, now)}</span>`}</div>
-      </div>
+      </div>${calBtn}
     </li>`;
   }
 
@@ -274,6 +466,7 @@
     doneBox.hidden = dn.length === 0;
     doneBox.open = open;
     summary.textContent = `已完成 ${dn.length}`;
+    allBtn.disabled = act.length === 0;
   }
 
   function reset() {
@@ -296,6 +489,46 @@
     t.focus();
   }
 
+  /* ---------------- 提醒设置 ---------------- */
+  function syncOffUI() {
+    if (PRESETS.includes(offMin)) {
+      selOff.value = String(offMin);
+      customBox.hidden = true;
+    } else {
+      selOff.value = 'custom';
+      customBox.hidden = false;
+      const unit = offMin % 1440 === 0 ? 1440 : (offMin % 60 === 0 ? 60 : 1);
+      cu.value = String(unit);
+      cn.value = String(offMin / unit);
+    }
+  }
+
+  selOff.addEventListener('change', () => {
+    if (selOff.value === 'custom') {
+      customBox.hidden = false;
+      const n = parseInt(cn.value, 10) || 1;
+      const u = parseInt(cu.value, 10) || 1;
+      offMin = Math.max(1, n * u);
+      saveOff();
+    } else {
+      offMin = parseInt(selOff.value, 10);
+      saveOff();
+      customBox.hidden = true;
+    }
+  });
+
+  function readCustom() {
+    const n = Math.max(1, Math.min(parseInt(cn.value, 10) || 1, 999));
+    const u = parseInt(cu.value, 10) || 1;
+    offMin = Math.min(n * u, 525600);
+    saveOff();
+  }
+  cn.addEventListener('input', readCustom);
+  cu.addEventListener('change', readCustom);
+
+  allBtn.addEventListener('click', exportAll);
+
+  /* ---------------- 交互 ---------------- */
   f.addEventListener('submit', e => {
     e.preventDefault();
     const title = t.value.trim();
@@ -321,14 +554,18 @@
     const it = items.find(x => x.id === row.dataset.id);
     if (!it) return;
 
+    if (e.target.closest('.cal')) {
+      exportOne(it);
+      return;
+    }
     if (e.target.closest('.check')) {
       it.done = !it.done;
       it.doneAt = it.done ? Date.now() : 0;
       save();
       render();
-    } else {
-      edit(it);
+      return;
     }
+    edit(it);
   }
 
   list.addEventListener('click', onRow);
@@ -347,6 +584,7 @@
   });
 
   d.value = defaultDue();
+  syncOffUI();
   render();
   setInterval(render, 60000);
 })();
