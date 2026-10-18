@@ -403,7 +403,20 @@
   const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-  function deliver(ics, name) {
+  async function deliver(ics, name) {
+    // Android：优先走系统分享面板，把日历文件直接交给日历 App
+    if (/Android/i.test(navigator.userAgent)) {
+      try {
+        const file = new File([ics], name, { type: 'text/calendar' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: name });
+          return;
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+      }
+    }
+
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -418,7 +431,7 @@
     if (isIOS()) {
       toast('已生成日历文件。若没有自动弹出，请到「文件 → 下载」里点开它。');
     } else {
-      toast('已下载 ' + name + '\n打开它并选择「日历」导入即可。');
+      toast('已下载 ' + name + '\n到「文件 → 下载」里点开，选择用日历导入。');
     }
   }
 
