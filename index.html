@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-0317">
+<meta name="build" content="20261019-0320">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -247,7 +247,7 @@
 
   /* ---------- 提示 ---------- */
   #toast{
-    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 26px);
+    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 80px);
     transform:translateX(-50%);
     max-width:min(88vw,420px);
     background:#1c1c1f; color:#f4f4f6;
@@ -279,6 +279,23 @@
     animation:pulse 1.6s ease-in-out infinite;
   }
   @keyframes pulse{ 50%{ opacity:.3; } }
+
+  /* 底部固定的新版本横条 */
+  #updBar{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);
+    display:flex; align-items:center; gap:12px;
+    background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:9px 10px 9px 16px;
+    box-shadow:0 8px 28px rgba(0,0,0,.18);
+    font-size:14px; color:var(--fg);
+    z-index:8; white-space:nowrap;
+  }
+  #updBar::before{
+    content:""; width:7px; height:7px; border-radius:50%;
+    background:#ff3b30; animation:pulse 1.6s ease-in-out infinite;
+  }
+  #updGo{ min-height:36px; font-size:14px; padding:0 14px; border-radius:10px; }
 </style>
 </head>
 <body>
@@ -327,6 +344,11 @@
 
   <div class="foot">
     <button id="upd" class="link" type="button">检查更新</button>
+  </div>
+
+  <div id="updBar" hidden>
+    <span>有新版本</span>
+    <button id="updGo" type="button">立即更新</button>
   </div>
 
   <div id="toast" hidden></div>
@@ -694,6 +716,8 @@
 
   /* ---------------- 检查更新 ---------------- */
   const updBtn = $('#upd');
+  const updBar = $('#updBar');
+  const updGo = $('#updGo');
   let autoBusy = false;
   let lastAuto = 0;
 
@@ -715,6 +739,7 @@
       if (b && b !== currentBuild()) {
         updBtn.classList.add('has-new');
         updBtn.textContent = '有新版本，点此更新';
+        updBar.hidden = false;
       }
     } catch (err) {}
     autoBusy = false;
@@ -738,6 +763,7 @@
         return;
       }
       updBtn.classList.remove('has-new');
+      updBar.hidden = true;
       updBtn.textContent = '已是最新版本';
       setTimeout(() => {
         updBtn.textContent = '检查更新';
@@ -750,6 +776,10 @@
   }
 
   updBtn.addEventListener('click', checkUpdate);
+
+  updGo.addEventListener('click', () => {
+    location.replace(location.pathname + '?v=' + Date.now());
+  });
 
   // 安装成 app 后常常是“恢复”而不是重新加载，所以在回到前台时也查一次
   setTimeout(maybeAutoCheck, 1000);
