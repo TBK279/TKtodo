@@ -21,6 +21,13 @@
     --over:#d9363e;
     --btn:#111114;
     --btn-fg:#ffffff;
+    --dim:#5c5c64;
+    --pill:#f0f0f4;
+    --pill-fg:#3c3c44;
+    --soon-bg:#fcf0dd;
+    --soon-fg:#955700;
+    --over-bg:#fbe5e6;
+    --over-fg:#c0292f;
   }
   @media (prefers-color-scheme: dark){
     :root{
@@ -32,6 +39,13 @@
       --over:#ff5f5f;
       --btn:#f2f2f4;
       --btn-fg:#0b0b0d;
+      --dim:#b4b4bc;
+      --pill:#26262b;
+      --pill-fg:#e8e8ec;
+      --soon-bg:#302619;
+      --soon-fg:#f2b862;
+      --over-bg:#331a1c;
+      --over-fg:#ff8585;
     }
   }
   *{ box-sizing:border-box; }
@@ -145,8 +159,17 @@
 
   .txt{ flex:1; min-width:0; }
   .title{ font-size:16px; word-break:break-word; }
-  .meta{ display:flex; gap:10px; margin-top:3px; font-size:13px; color:var(--mute); }
-  .over .meta{ color:var(--over); }
+  .meta{ display:flex; align-items:center; gap:8px; margin-top:5px; font-size:14px; color:var(--mute); }
+  .due{ font-variant-numeric:tabular-nums; font-weight:500; color:var(--dim); }
+  .left{
+    display:inline-flex; align-items:center;
+    padding:1px 8px 2px; border-radius:999px;
+    font-size:12.5px; font-weight:600; line-height:1.5;
+    background:var(--pill); color:var(--pill-fg);
+  }
+  .soon .left{ background:var(--soon-bg); color:var(--soon-fg); }
+  .over .left{ background:var(--over-bg); color:var(--over-fg); }
+  .over .due{ color:var(--over); }
   .done .title{ color:var(--mute); text-decoration:line-through; }
 
   .cal{
@@ -476,16 +499,17 @@
     if (it.id === editing) return editorHTML(it);
 
     const over = !it.done && it.due < now;
+    const soon = !it.done && !over && it.due - now <= 86400000;
     const calBtn = it.done ? '' : `<button class="cal" type="button" aria-label="加入日历">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="8.3"/><path d="M12 7.6V12l3 1.9"/>
         </svg>
       </button>`;
-    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}" data-id="${it.id}">
+    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}${soon ? ' soon' : ''}" data-id="${it.id}">
       <button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>
       <div class="txt">
         <div class="title">${esc(it.title)}</div>
-        <div class="meta"><span>${fmt(it.due)}</span>${it.done ? '' : `<span>${rel(it.due, now)}</span>`}</div>
+        <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left">${rel(it.due, now)}</span>`}</div>
       </div>${calBtn}
     </li>`;
   }
