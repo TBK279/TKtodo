@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-0314">
+<meta name="build" content="20261019-0317">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -269,6 +269,16 @@
   }
   .link:active{ opacity:.55; }
   .link:disabled{ opacity:.55; cursor:default; }
+  .link.has-new{
+    color:var(--fg); font-weight:600; text-decoration:none;
+  }
+  .link.has-new::before{
+    content:""; display:inline-block;
+    width:7px; height:7px; border-radius:50%;
+    background:#ff3b30; margin-right:7px; vertical-align:1px;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse{ 50%{ opacity:.3; } }
 </style>
 </head>
 <body>
@@ -684,20 +694,50 @@
 
   /* ---------------- 检查更新 ---------------- */
   const updBtn = $('#upd');
+  let autoBusy = false;
+  let lastAuto = 0;
+
+  const currentBuild = () => document.querySelector('meta[name="build"]').content;
+
+  async function fetchRemoteBuild() {
+    const res = await fetch(location.pathname + '?t=' + Date.now(), { cache: 'no-store' });
+    const html = await res.text();
+    const m = html.match(/<meta name="build" content="([^"]+)"/);
+    return m ? m[1] : null;
+  }
+
+  // 打开时静默检查：有新版本就在按钮上亮红点
+  async function autoCheck() {
+    if (autoBusy) return;
+    autoBusy = true;
+    try {
+      const b = await fetchRemoteBuild();
+      if (b && b !== currentBuild()) {
+        updBtn.classList.add('has-new');
+        updBtn.textContent = '有新版本，点此更新';
+      }
+    } catch (err) {}
+    autoBusy = false;
+  }
+
+  function maybeAutoCheck() {
+    const now = Date.now();
+    if (now - lastAuto < 5 * 60000) return;
+    lastAuto = now;
+    autoCheck();
+  }
 
   async function checkUpdate() {
     updBtn.disabled = true;
     updBtn.textContent = '检查中…';
     try {
-      const res = await fetch(location.pathname + '?t=' + Date.now(), { cache: 'no-store' });
-      const html = await res.text();
-      const found = html.match(/<meta name="build" content="([^"]+)"/);
-      const current = document.querySelector('meta[name="build"]').content;
-      if (found && found[1] && found[1] !== current) {
+      const b = await fetchRemoteBuild();
+      if (b && b !== currentBuild()) {
         updBtn.textContent = '发现新版本，正在更新…';
         location.replace(location.pathname + '?v=' + Date.now());
         return;
       }
+      updBtn.classList.remove('has-new');
       updBtn.textContent = '已是最新版本';
       setTimeout(() => {
         updBtn.textContent = '检查更新';
@@ -710,6 +750,12 @@
   }
 
   updBtn.addEventListener('click', checkUpdate);
+
+  // 安装成 app 后常常是“恢复”而不是重新加载，所以在回到前台时也查一次
+  setTimeout(maybeAutoCheck, 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') setTimeout(maybeAutoCheck, 600);
+  });
 
   d.value = defaultDue();
   syncOffUI();
