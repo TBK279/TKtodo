@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-0340">
+<meta name="build" content="20261019-0344">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -255,13 +255,17 @@
   #d, .ed{ cursor:pointer; }
   #d::placeholder{ color:var(--mute); }
 
+  html.lock, body.lock{ overflow:hidden; }
+
   #pickerBack{
     position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:20;
+    touch-action:none;
   }
   #picker{
     position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:21;
     width:min(92vw, 380px);
     max-height:88vh; overflow-y:auto;
+    overscroll-behavior: contain;
     background:var(--card);
     border-radius:20px;
     padding:16px 16px 14px;
@@ -303,6 +307,7 @@
     width:64px; height:200px; overflow-y:auto;
     scroll-snap-type:y mandatory;
     -webkit-overflow-scrolling:touch;
+    overscroll-behavior: contain;
     scrollbar-width:none; text-align:center;
   }
   .wheel::-webkit-scrollbar{ display:none; }
@@ -577,6 +582,11 @@
     }
   }
 
+  function lockScroll(on) {
+    document.documentElement.classList.toggle('lock', on);
+    document.body.classList.toggle('lock', on);
+  }
+
   function openPicker(input) {
     pkTarget = input;
     let base = new Date(input.dataset.v || toInput(Date.now()));
@@ -584,6 +594,7 @@
     pkSel = { y: base.getFullYear(), m: base.getMonth(), d: base.getDate() };
     pkView = new Date(pkSel.y, pkSel.m, 1);
     renderPicker();
+    lockScroll(true);
     pkBack.hidden = false;
     picker.hidden = false;
     requestAnimationFrame(() => {
@@ -596,6 +607,7 @@
     picker.hidden = true;
     pkBack.hidden = true;
     pkTarget = null;
+    lockScroll(false);
   }
 
   function renderPicker() {
