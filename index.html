@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1113">
+<meta name="build" content="20261019-1119">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -144,7 +144,7 @@
     padding:2px 18px;
   }
   .row{
-    display:flex; align-items:center; gap:10px;
+    display:flex; align-items:center; flex-wrap:wrap; gap:10px;
     padding:13px 0; border-top:1px solid var(--line); cursor:pointer;
   }
   #list .row:first-child{ border-top:0; }
@@ -413,6 +413,55 @@
   .cm-foot{ display:flex; gap:8px; margin-top:14px; }
   .cm-foot button{ flex:1; }
 
+  /* ---------- 最近删除 / 确认弹窗 ---------- */
+  .trashbar{ margin-top:6px; text-align:center; }
+
+  .rowacts{
+    flex:0 0 100%;
+    display:flex; gap:8px;
+    padding:4px 0 2px 46px;
+    animation:slideIn .16s ease-out;
+  }
+  .rowacts button{ min-height:32px; font-size:13px; padding:0 12px; border-radius:9px; }
+
+  #trashBack, #cfBack{
+    position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:24;
+    touch-action:none;
+  }
+  #trashBack[hidden], #cfBack[hidden]{ display:none; }
+
+  #trashModal, #cfModal{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:25;
+    width:min(92vw, 400px); max-height:86vh;
+    display:flex; flex-direction:column;
+    background:var(--card); border-radius:20px;
+    padding:16px; box-shadow:0 20px 60px rgba(0,0,0,.32);
+    overscroll-behavior:contain;
+  }
+  #trashModal[hidden], #cfModal[hidden]{ display:none; }
+
+  .trash-max{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    font-size:13px; color:var(--mute); margin-bottom:8px;
+  }
+  .trash-max input{
+    width:60px; text-align:center;
+    font:inherit; font-size:16px; color:var(--fg);
+    background:var(--bg); border:1px solid var(--line);
+    border-radius:9px; padding:0 6px; min-height:32px; outline:none;
+  }
+  .trash-row{ display:flex; align-items:center; gap:8px; padding:10px 0; }
+  .trash-txt{ flex:1; min-width:0; }
+  .trash-txt .cm-title{ font-size:15px; }
+  .trash-txt .cm-due{ display:block; font-size:12px; color:var(--mute); margin-top:2px; }
+  .trash-row button{ min-height:30px; font-size:12.5px; padding:0 10px; border-radius:9px; flex:0 0 auto; }
+
+  .cf-title{ font-size:16px; font-weight:600; text-align:center; margin-bottom:8px; }
+  .cf-body{ font-size:14px; color:var(--mute); text-align:center; line-height:1.6; white-space:pre-line; }
+  .cf-acts{ display:flex; gap:8px; margin-top:16px; }
+  .cf-acts button{ flex:1; }
+  #cfOk{ background:var(--over); color:#fff; }
+
   /* ---------- 提示 ---------- */
   #toast{
     position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 26px);
@@ -477,6 +526,10 @@
     <ul id="doneList"></ul>
     <button id="clearDone" class="ghost danger" type="button">清空已完成</button>
   </details>
+
+  <div class="trashbar">
+    <button id="trashOpen" class="link" type="button">最近删除 0</button>
+  </div>
 
   <div class="foot">
     <button id="upd" class="link" type="button">检查更新</button>
@@ -543,6 +596,29 @@
     </div>
   </div>
 
+  <div id="trashBack" hidden></div>
+  <div id="trashModal" hidden>
+    <div class="cm-head">最近删除</div>
+    <div class="trash-max">
+      保留最近 <input id="trashMax" type="number" min="1" max="30" inputmode="numeric" aria-label="保留条数"> 条
+    </div>
+    <ul class="cm-list" id="trashList"></ul>
+    <div class="cm-foot">
+      <button id="trashClear" class="ghost danger" type="button">清空最近删除</button>
+      <button id="trashClose" class="ghost" type="button">关闭</button>
+    </div>
+  </div>
+
+  <div id="cfBack" hidden></div>
+  <div id="cfModal" hidden>
+    <div class="cf-title" id="cfTitle"></div>
+    <div class="cf-body" id="cfBody"></div>
+    <div class="cf-acts">
+      <button id="cfCancel" class="ghost" type="button">取消</button>
+      <button id="cfOk" type="button">删除</button>
+    </div>
+  </div>
+
   <div id="toast" hidden></div>
 </main>
 
@@ -559,13 +635,36 @@
   const cmList = $('#cmList'), cmAll = $('#cmAll'), cmNone = $('#cmNone');
   const cmOff = $('#cmOff'), cmCustom = $('#cmCustom'), cmN = $('#cmN'), cmU = $('#cmU');
   const cmCancel = $('#cmCancel'), cmGo = $('#cmGo');
+  const trashOpen = $('#trashOpen'), trashBack = $('#trashBack'), trashModal = $('#trashModal');
+  const trashList = $('#trashList'), trashMaxEl = $('#trashMax'), trashClear = $('#trashClear'), trashClose = $('#trashClose');
+  const cfBack = $('#cfBack'), cfModal = $('#cfModal'), cfTitle = $('#cfTitle'), cfBody = $('#cfBody');
+  const cfCancel = $('#cfCancel'), cfOk = $('#cfOk');
   const toastEl = $('#toast');
+
+  const TRASH_KEY = 'ddl.trash.v1';
+  const TRASHMAX_KEY = 'ddl.trashmax.v1';
 
   let items = [];
   try {
     const parsed = JSON.parse(localStorage.getItem(KEY) || '[]');
     if (Array.isArray(parsed)) items = parsed;
   } catch (e) {}
+
+  let trash = [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TRASH_KEY) || '[]');
+    if (Array.isArray(parsed)) trash = parsed;
+  } catch (e) {}
+
+  let trashMax = 5;
+  try {
+    const v = parseInt(localStorage.getItem(TRASHMAX_KEY), 10);
+    if (v > 0) trashMax = Math.min(30, v);
+  } catch (e) {}
+
+  const saveTrash = () => localStorage.setItem(TRASH_KEY, JSON.stringify(trash));
+
+  let openId = null;
 
   let offMin = 1440;
   try {
@@ -780,10 +879,40 @@
     }
   }
 
+  let lockDepth = 0;
+
   function lockScroll(on) {
-    document.documentElement.classList.toggle('lock', on);
-    document.body.classList.toggle('lock', on);
+    lockDepth = Math.max(0, lockDepth + (on ? 1 : -1));
+    const locked = lockDepth > 0;
+    document.documentElement.classList.toggle('lock', locked);
+    document.body.classList.toggle('lock', locked);
   }
+
+  /* ---------------- 确认弹窗 ---------------- */
+  let cfResolve = null;
+
+  function askConfirm(title, body, okText) {
+    cfTitle.textContent = title;
+    cfBody.textContent = body;
+    cfOk.textContent = okText || '删除';
+    lockScroll(true);
+    cfBack.hidden = false;
+    cfModal.hidden = false;
+    return new Promise(res => { cfResolve = res; });
+  }
+
+  function closeConfirm(v) {
+    cfModal.hidden = true;
+    cfBack.hidden = true;
+    lockScroll(false);
+    const r = cfResolve;
+    cfResolve = null;
+    if (r) r(v);
+  }
+
+  cfOk.addEventListener('click', () => closeConfirm(true));
+  cfCancel.addEventListener('click', () => closeConfirm(false));
+  cfBack.addEventListener('click', () => closeConfirm(false));
 
   function openPicker(input) {
     pkTarget = input;
@@ -1060,6 +1189,10 @@
         <div class="title">${esc(it.title)}</div>
         <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left${cls}">${rel(it.due, now)}</span>`}${it.done ? '' : (it.est ? `<span class="est${cls}">需 ${dur(it.est)}</span>` : '')}</div>
       </div>
+      ${(openId === it.id && !it.done) ? `<div class="rowacts">
+        <button class="act-rename ghost" type="button">重命名</button>
+        <button class="act-del ghost danger" type="button">删除</button>
+      </div>` : ''}
     </li>`;
   }
 
@@ -1079,6 +1212,7 @@
     doneBox.open = open;
     summary.textContent = `已完成 ${dn.length}`;
     clearBtn.hidden = dn.length === 0;
+    renderTrashCount();
   }
 
   /* ---------------- 预估时长 ---------------- */
@@ -1154,8 +1288,7 @@
   /* ---------------- 新增 ---------------- */
   f.addEventListener('submit', e => {
     e.preventDefault();
-    const title = t.value.trim();
-    if (!title) { t.focus(); return; }
+    const title = t.value.trim() || '新待办';
     const raw = d.dataset.v;
     if (!raw) { openPicker(d); return; }
     const due = new Date(raw).getTime();
@@ -1190,6 +1323,25 @@
     const it = items.find(x => x.id === row.dataset.id);
     if (!it) return;
 
+    if (e.target.closest('.act-rename')) {
+      openId = null;
+      editing = it.id;
+      render();
+      const el = list.querySelector('.editor .et');
+      if (el) {
+        el.focus();
+        try { el.setSelectionRange(el.value.length, el.value.length); } catch (err) {}
+      }
+      return;
+    }
+
+    if (e.target.closest('.act-del')) {
+      askConfirm('删除待办', `确定删除「${it.title}」？\n删除后可以在「最近删除」里恢复。`, '删除').then(ok => {
+        if (ok) removeItem(it.id);
+      });
+      return;
+    }
+
     if (e.target.closest('.save')) {
       const title = row.querySelector('.et').value.trim();
       if (title) it.title = title;
@@ -1213,10 +1365,9 @@
     }
 
     if (e.target.closest('.del')) {
-      items = items.filter(x => x.id !== it.id);
-      editing = null;
-      save();
-      render();
+      askConfirm('删除待办', `确定删除「${it.title}」？\n删除后可以在「最近删除」里恢复。`, '删除').then(ok => {
+        if (ok) removeItem(it.id);
+      });
       return;
     }
 
@@ -1230,13 +1381,9 @@
       return;
     }
 
-    editing = (editing === it.id) ? null : it.id;
+    editing = null;
+    openId = (openId === it.id) ? null : it.id;
     render();
-    const input = list.querySelector('.editor .et');
-    if (input) {
-      input.focus();
-      try { input.setSelectionRange(input.value.length, input.value.length); } catch (err) {}
-    }
   }
 
   list.addEventListener('click', onRow);
@@ -1259,11 +1406,122 @@
   });
 
   clearBtn.addEventListener('click', () => {
-    if (!items.some(x => x.done)) return;
-    if (!confirm('清空全部已完成的任务？')) return;
-    items = items.filter(x => !x.done);
+    const n = items.filter(x => x.done).length;
+    if (!n) return;
+    askConfirm('清空已完成', `将永久删除 ${n} 条已完成的待办，无法恢复。`, '清空').then(ok => {
+      if (!ok) return;
+      items = items.filter(x => !x.done);
+      save();
+      render();
+    });
+  });
+
+  /* ---------------- 最近删除 ---------------- */
+  function renderTrashCount() {
+    trashOpen.textContent = `最近删除 ${trash.length}`;
+  }
+
+  function removeItem(id) {
+    const idx = items.findIndex(x => x.id === id);
+    if (idx < 0) return;
+    const it = items[idx];
+    items.splice(idx, 1);
+    trash.unshift({ ...it, deletedAt: Date.now() });
+    if (trash.length > trashMax) trash = trash.slice(0, trashMax);
+    editing = null;
+    openId = null;
     save();
+    saveTrash();
     render();
+    if (!trashModal.hidden) renderTrash();
+  }
+
+  function restoreItem(id) {
+    const i = trash.findIndex(x => x.id === id);
+    if (i < 0) return;
+    const it = { ...trash[i] };
+    delete it.deletedAt;
+    trash.splice(i, 1);
+    items.push(it);
+    save();
+    saveTrash();
+    render();
+    renderTrash();
+    toast('已恢复「' + it.title + '」');
+  }
+
+  function renderTrash() {
+    trashMaxEl.value = String(trashMax);
+    trashList.innerHTML = trash.length
+      ? trash.map(it => `
+        <li class="cm-item">
+          <div class="trash-row">
+            <div class="trash-txt">
+              <div class="cm-title">${esc(it.title)}</div>
+              <div class="cm-due">${fmt(it.due)}</div>
+            </div>
+            <button class="trash-restore ghost" type="button" data-id="${it.id}">恢复</button>
+            <button class="trash-purge ghost danger" type="button" data-id="${it.id}">彻底删除</button>
+          </div>
+        </li>`).join('')
+      : '<li class="empty">没有最近删除</li>';
+    trashClear.disabled = trash.length === 0;
+  }
+
+  function openTrash() {
+    renderTrash();
+    lockScroll(true);
+    trashBack.hidden = false;
+    trashModal.hidden = false;
+  }
+
+  function closeTrash() {
+    trashModal.hidden = true;
+    trashBack.hidden = true;
+    lockScroll(false);
+  }
+
+  trashOpen.addEventListener('click', openTrash);
+  trashClose.addEventListener('click', closeTrash);
+  trashBack.addEventListener('click', closeTrash);
+
+  trashMaxEl.addEventListener('change', () => {
+    const v = Math.max(1, Math.min(parseInt(trashMaxEl.value, 10) || 5, 30));
+    trashMax = v;
+    trashMaxEl.value = String(v);
+    localStorage.setItem(TRASHMAX_KEY, String(v));
+    if (trash.length > trashMax) { trash = trash.slice(0, trashMax); saveTrash(); }
+    renderTrash();
+    renderTrashCount();
+  });
+
+  trashList.addEventListener('click', e => {
+    const r = e.target.closest('.trash-restore');
+    if (r) { restoreItem(r.dataset.id); return; }
+
+    const p = e.target.closest('.trash-purge');
+    if (p) {
+      const it = trash.find(x => x.id === p.dataset.id);
+      if (!it) return;
+      askConfirm('彻底删除', `「${it.title}」将被永久删除，无法恢复。`, '彻底删除').then(ok => {
+        if (!ok) return;
+        trash = trash.filter(x => x.id !== it.id);
+        saveTrash();
+        renderTrash();
+        renderTrashCount();
+      });
+    }
+  });
+
+  trashClear.addEventListener('click', () => {
+    if (!trash.length) return;
+    askConfirm('清空最近删除', `将永久删除最近删除里的 ${trash.length} 条待办，无法恢复。`, '清空').then(ok => {
+      if (!ok) return;
+      trash = [];
+      saveTrash();
+      renderTrash();
+      renderTrashCount();
+    });
   });
 
   /* ---------------- 检查更新 ---------------- */
