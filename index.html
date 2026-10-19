@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1119">
+<meta name="build" content="20261019-1126">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -212,6 +212,7 @@
   }
   .editor input:focus{ border-color:var(--fg); }
   .eacts{ display:flex; align-items:center; gap:8px; }
+  .etext{ font-size:16px; padding:8px 2px; word-break:break-word; }
   .eacts .spacer{ flex:1; }
   .eacts button{ min-height:38px; font-size:14px; padding:0 14px; border-radius:10px; }
 
@@ -664,8 +665,6 @@
 
   const saveTrash = () => localStorage.setItem(TRASH_KEY, JSON.stringify(trash));
 
-  let openId = null;
-
   let offMin = 1440;
   try {
     const v = parseInt(localStorage.getItem(OFF_KEY), 10);
@@ -673,6 +672,7 @@
   } catch (e) {}
 
   let editing = null;
+  let renaming = false;
   let estMin = 0;
   let toastTimer = 0;
 
@@ -1160,13 +1160,21 @@
 
   /* ---------------- 渲染 ---------------- */
   function editorHTML(it) {
+    const titlePart = renaming
+      ? `<input class="et" type="text" value="${esc(it.title)}" aria-label="任务">`
+      : `<div class="etext">${esc(it.title)}</div>`;
+    const renameBtn = renaming
+      ? ''
+      : '<button class="act-rename ghost" type="button">重命名</button>';
+
     return `<li class="row editing" data-id="${it.id}" data-est="${it.est || 0}">
       <div class="editor">
-        <input class="et" type="text" value="${esc(it.title)}" aria-label="任务">
+        ${titlePart}
         <input class="ed" type="text" readonly value="${toInput(it.due).replace('T', ' ')}" data-v="${toInput(it.due)}" aria-label="截止时间">
         <div class="ewd">${wdText(it.due)}</div>
         <div class="est-row">${estBlockHTML(it.est || 0)}</div>
         <div class="eacts">
+          ${renameBtn}
           <button class="del ghost danger" type="button">删除</button>
           <span class="spacer"></span>
           <button class="cancel ghost" type="button">取消</button>
@@ -1189,10 +1197,6 @@
         <div class="title">${esc(it.title)}</div>
         <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left${cls}">${rel(it.due, now)}</span>`}${it.done ? '' : (it.est ? `<span class="est${cls}">需 ${dur(it.est)}</span>` : '')}</div>
       </div>
-      ${(openId === it.id && !it.done) ? `<div class="rowacts">
-        <button class="act-rename ghost" type="button">重命名</button>
-        <button class="act-del ghost danger" type="button">删除</button>
-      </div>` : ''}
     </li>`;
   }
 
@@ -1324,8 +1328,7 @@
     if (!it) return;
 
     if (e.target.closest('.act-rename')) {
-      openId = null;
-      editing = it.id;
+      renaming = true;
       render();
       const el = list.querySelector('.editor .et');
       if (el) {
@@ -1335,16 +1338,12 @@
       return;
     }
 
-    if (e.target.closest('.act-del')) {
-      askConfirm('删除待办', `确定删除「${it.title}」？\n删除后可以在「最近删除」里恢复。`, '删除').then(ok => {
-        if (ok) removeItem(it.id);
-      });
-      return;
-    }
-
     if (e.target.closest('.save')) {
-      const title = row.querySelector('.et').value.trim();
-      if (title) it.title = title;
+      const el = row.querySelector('.et');
+      if (el) {
+        const v = el.value.trim();
+        if (v) it.title = v;
+      }
       const rawDue = row.querySelector('.ed').dataset.v;
       const due = rawDue ? new Date(rawDue).getTime() : NaN;
       if (Number.isFinite(due)) it.due = due;
@@ -1354,12 +1353,14 @@
       }
       save();
       editing = null;
+      renaming = false;
       render();
       return;
     }
 
     if (e.target.closest('.cancel')) {
       editing = null;
+      renaming = false;
       render();
       return;
     }
@@ -1381,8 +1382,8 @@
       return;
     }
 
-    editing = null;
-    openId = (openId === it.id) ? null : it.id;
+    editing = (editing === it.id) ? null : it.id;
+    renaming = false;
     render();
   }
 
@@ -1429,7 +1430,7 @@
     trash.unshift({ ...it, deletedAt: Date.now() });
     if (trash.length > trashMax) trash = trash.slice(0, trashMax);
     editing = null;
-    openId = null;
+    renaming = false;
     save();
     saveTrash();
     render();
