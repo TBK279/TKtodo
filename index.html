@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1014">
+<meta name="build" content="20261019-1040">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -170,7 +170,7 @@
 
   .txt{ flex:1; min-width:0; }
   .title{ font-size:16px; word-break:break-word; }
-  .meta{ display:flex; align-items:center; gap:8px; margin-top:5px; font-size:14px; color:var(--mute); }
+  .meta{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; margin-top:5px; font-size:14px; color:var(--mute); }
   .due{ font-variant-numeric:tabular-nums; font-weight:500; color:var(--dim); }
   .left{
     display:inline-flex; align-items:center;
@@ -343,6 +343,61 @@
   .pk-acts{ display:flex; align-items:center; gap:8px; margin-top:12px; }
   .pk-acts .spacer{ flex:1; }
 
+  .est-custom{
+    display:inline-flex; align-items:center; gap:6px;
+    width:100%; justify-content:center; margin-top:6px;
+  }
+  .est-custom[hidden]{ display:none; }
+  .est-custom input, .est-custom select{
+    font:inherit; font-size:16px; color:var(--fg);
+    background:var(--bg); border:1px solid var(--line);
+    border-radius:9px; padding:0 8px; min-height:34px; outline:none;
+  }
+  .est-custom input{ width:64px; text-align:center; }
+
+  /* ---------- 导入日历弹窗 ---------- */
+  #calBack{
+    position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:22;
+    touch-action:none;
+  }
+  #calModal{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:23;
+    width:min(92vw, 400px); max-height:86vh;
+    display:flex; flex-direction:column;
+    background:var(--card); border-radius:20px;
+    padding:16px; box-shadow:0 20px 60px rgba(0,0,0,.32);
+    overscroll-behavior:contain;
+  }
+  .cm-head{ font-size:16px; font-weight:600; text-align:center; margin-bottom:10px; }
+  .cm-list{
+    list-style:none; margin:0; padding:0;
+    overflow-y:auto; flex:1; min-height:70px;
+    overscroll-behavior:contain;
+  }
+  .cm-item{ border-top:1px solid var(--line); }
+  .cm-item:first-child{ border-top:0; }
+  .cm-item label{ display:flex; align-items:center; gap:10px; padding:10px 0; cursor:pointer; }
+  .cm-item input{ width:18px; height:18px; accent-color:var(--fg); flex:0 0 auto; }
+  .cm-title{
+    flex:1; min-width:0; font-size:15px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .cm-due{ font-size:12px; color:var(--mute); flex:0 0 auto; }
+  .cm-acts{ display:flex; gap:8px; margin-top:8px; }
+  .cm-acts button{ flex:1; min-height:36px; font-size:14px; padding:0 10px; border-radius:10px; }
+  .cm-remind{
+    display:flex; align-items:center; justify-content:center; flex-wrap:wrap;
+    gap:8px; margin-top:12px; font-size:14px; color:var(--mute);
+  }
+  .cm-remind select, .cm-remind input{
+    font:inherit; font-size:16px; color:var(--fg);
+    background:var(--bg); border:1px solid var(--line);
+    border-radius:10px; padding:0 8px; min-height:36px; outline:none;
+  }
+  .cm-remind input{ width:60px; text-align:center; }
+  .cm-foot{ display:flex; gap:8px; margin-top:14px; }
+  .cm-foot button{ flex:1; }
+
   /* ---------- 提示 ---------- */
   #toast{
     position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 26px);
@@ -393,39 +448,13 @@
     <div class="wd" id="wd"></div>
     <div class="est-row" id="estRow">
       <span class="est-label">预估</span>
-      <button class="chip on" type="button" data-est="0">无</button>
-      <button class="chip" type="button" data-est="30">30 分</button>
-      <button class="chip" type="button" data-est="60">1 小时</button>
-      <button class="chip" type="button" data-est="120">2 小时</button>
-      <button class="chip" type="button" data-est="240">半天</button>
-      <button class="chip" type="button" data-est="1440">1 天</button>
     </div>
   </form>
 
   <ul id="list"></ul>
 
   <div class="tools">
-    <span>提醒</span>
-    <select id="off" aria-label="提前多久提醒">
-      <option value="0">不提醒</option>
-      <option value="15">提前 15 分钟</option>
-      <option value="30">提前 30 分钟</option>
-      <option value="60">提前 1 小时</option>
-      <option value="180">提前 3 小时</option>
-      <option value="1440">提前 1 天</option>
-      <option value="2880">提前 2 天</option>
-      <option value="4320">提前 3 天</option>
-      <option value="custom">自定义…</option>
-    </select>
-    <span id="custom" hidden>
-      <input id="cn" type="number" min="1" max="999" inputmode="numeric" value="6" aria-label="数量">
-      <select id="cu" aria-label="单位">
-        <option value="1">分钟前</option>
-        <option value="60" selected>小时前</option>
-        <option value="1440">天前</option>
-      </select>
-    </span>
-    <button id="all" class="ghost" type="button">全部导入日历</button>
+    <button id="calOpen" class="ghost" type="button">导入日历</button>
   </div>
 
   <details id="doneBox" hidden>
@@ -463,6 +492,42 @@
     </div>
   </div>
 
+  <div id="calBack" hidden></div>
+  <div id="calModal" hidden>
+    <div class="cm-head">导入日历</div>
+    <ul class="cm-list" id="cmList"></ul>
+    <div class="cm-acts">
+      <button id="cmAll" class="ghost" type="button">全选</button>
+      <button id="cmNone" class="ghost" type="button">全不选</button>
+    </div>
+    <div class="cm-remind">
+      <span>提醒</span>
+      <select id="cmOff" aria-label="提前多久提醒">
+        <option value="0">不提醒</option>
+        <option value="15">提前 15 分钟</option>
+        <option value="30">提前 30 分钟</option>
+        <option value="60">提前 1 小时</option>
+        <option value="180">提前 3 小时</option>
+        <option value="1440">提前 1 天</option>
+        <option value="2880">提前 2 天</option>
+        <option value="4320">提前 3 天</option>
+        <option value="custom">自定义…</option>
+      </select>
+      <span id="cmCustom" hidden>
+        <input id="cmN" type="number" min="1" max="999" inputmode="numeric" value="6" aria-label="数量">
+        <select id="cmU" aria-label="单位">
+          <option value="1">分钟前</option>
+          <option value="60" selected>小时前</option>
+          <option value="1440">天前</option>
+        </select>
+      </span>
+    </div>
+    <div class="cm-foot">
+      <button id="cmCancel" class="ghost" type="button">取消</button>
+      <button id="cmGo" type="button">导入</button>
+    </div>
+  </div>
+
   <div id="toast" hidden></div>
 </main>
 
@@ -475,7 +540,10 @@
   const list = $('#list'), doneBox = $('#doneBox'), doneList = $('#doneList'), summary = $('#summary');
   const clearBtn = $('#clearDone');
   const wd = $('#wd'), nowBtn = $('#now');
-  const selOff = $('#off'), customBox = $('#custom'), cn = $('#cn'), cu = $('#cu'), allBtn = $('#all');
+  const calOpen = $('#calOpen'), calBack = $('#calBack'), calModal = $('#calModal');
+  const cmList = $('#cmList'), cmAll = $('#cmAll'), cmNone = $('#cmNone');
+  const cmOff = $('#cmOff'), cmCustom = $('#cmCustom'), cmN = $('#cmN'), cmU = $('#cmU');
+  const cmCancel = $('#cmCancel'), cmGo = $('#cmGo');
   const toastEl = $('#toast');
 
   let items = [];
@@ -565,12 +633,32 @@
     return `${min} 分钟`;
   }
 
-  const EST_OPTS = [[0, '无'], [30, '30 分'], [60, '1 小时'], [120, '2 小时'], [240, '半天'], [1440, '1 天']];
+  const EST_PRESETS = [[0, '无'], [60, '1 小时'], [480, '半天'], [1440, '1 天']];
 
-  function chipHTML(sel) {
-    return EST_OPTS.map(o =>
-      `<button class="chip${o[0] === sel ? ' on' : ''}" type="button" data-est="${o[0]}">${o[1]}</button>`
-    ).join('');
+  function estUnitOf(v) {
+    if (v % 1440 === 0) return 1440;
+    if (v % 60 === 0) return 60;
+    return 1;
+  }
+
+  function estBlockHTML(val) {
+    const v = val || 0;
+    const isCustom = v !== 0 && !EST_PRESETS.some(p => p[0] === v);
+    const chips = EST_PRESETS.map(p =>
+      `<button class="chip${p[0] === v ? ' on' : ''}" type="button" data-est="${p[0]}">${p[1]}</button>`
+    ).join('') + `<button class="chip${isCustom ? ' on' : ''}" type="button" data-est="custom">自定义</button>`;
+
+    const unit = isCustom ? estUnitOf(v) : 60;
+    const num = isCustom ? Math.max(1, Math.round(v / unit)) : 2;
+
+    return chips +
+      `<span class="est-custom"${isCustom ? '' : ' hidden'}>` +
+      `<input class="est-n" type="number" min="1" max="999" inputmode="numeric" value="${num}">` +
+      `<select class="est-u">` +
+      `<option value="1"${unit === 1 ? ' selected' : ''}>分钟</option>` +
+      `<option value="60"${unit === 60 ? ' selected' : ''}>小时</option>` +
+      `<option value="1440"${unit === 1440 ? ' selected' : ''}>天</option>` +
+      `</select></span>`;
   }
 
   /* ---------------- 日期选择器 ---------------- */
@@ -790,16 +878,91 @@
 
   const safeName = s => String(s).replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 40) || 'TKtodo';
 
-  function exportOne(it) {
-    deliver(buildICS([it]), safeName(it.title) + '.ics');
+  /* ---------------- 导入日历弹窗 ---------------- */
+  function syncCmOff() {
+    if (PRESETS.includes(offMin)) {
+      cmOff.value = String(offMin);
+      cmCustom.hidden = true;
+    } else {
+      cmOff.value = 'custom';
+      cmCustom.hidden = false;
+      const unit = offMin % 1440 === 0 ? 1440 : (offMin % 60 === 0 ? 60 : 1);
+      cmU.value = String(unit);
+      cmN.value = String(offMin / unit);
+    }
   }
 
-  function exportAll() {
-    const act = items.filter(x => !x.done);
-    if (!act.length) return;
-    const now = new Date();
-    deliver(buildICS(act), `TKtodo-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.ics`);
+  function openCal() {
+    const act = items.filter(x => !x.done).sort((a, b) => a.due - b.due);
+    if (!act.length) { toast('还没有可导入的待办'); return; }
+
+    cmList.innerHTML = act.map(it => `
+      <li class="cm-item">
+        <label>
+          <input type="checkbox" checked data-id="${it.id}">
+          <span class="cm-title">${esc(it.title)}</span>
+          <span class="cm-due">${fmt(it.due)}</span>
+        </label>
+      </li>`).join('');
+
+    syncCmOff();
+    lockScroll(true);
+    calBack.hidden = false;
+    calModal.hidden = false;
   }
+
+  function closeCal() {
+    calModal.hidden = true;
+    calBack.hidden = true;
+    lockScroll(false);
+  }
+
+  calOpen.addEventListener('click', openCal);
+  cmCancel.addEventListener('click', closeCal);
+  calBack.addEventListener('click', closeCal);
+
+  cmAll.addEventListener('click', () => {
+    for (const cb of cmList.querySelectorAll('input[type=checkbox]')) cb.checked = true;
+  });
+  cmNone.addEventListener('click', () => {
+    for (const cb of cmList.querySelectorAll('input[type=checkbox]')) cb.checked = false;
+  });
+
+  cmOff.addEventListener('change', () => {
+    if (cmOff.value === 'custom') {
+      cmCustom.hidden = false;
+      const n = parseInt(cmN.value, 10) || 1;
+      const u = parseInt(cmU.value, 10) || 1;
+      offMin = Math.max(1, n * u);
+      saveOff();
+    } else {
+      offMin = parseInt(cmOff.value, 10);
+      saveOff();
+      cmCustom.hidden = true;
+    }
+  });
+
+  function readCmCustom() {
+    const n = Math.max(1, Math.min(parseInt(cmN.value, 10) || 1, 999));
+    const u = parseInt(cmU.value, 10) || 1;
+    offMin = Math.min(n * u, 525600);
+    saveOff();
+  }
+  cmN.addEventListener('input', readCmCustom);
+  cmU.addEventListener('change', readCmCustom);
+
+  cmGo.addEventListener('click', () => {
+    const ids = [];
+    for (const cb of cmList.querySelectorAll('input[type=checkbox]')) {
+      if (cb.checked) ids.push(cb.dataset.id);
+    }
+    const sel = items.filter(x => ids.includes(x.id)).sort((a, b) => a.due - b.due);
+    if (!sel.length) { toast('请先选择要导入的待办'); return; }
+
+    const now = new Date();
+    deliver(buildICS(sel), `TKtodo-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.ics`);
+    closeCal();
+  });
 
   /* ---------------- 渲染 ---------------- */
   function editorHTML(it) {
@@ -808,7 +971,7 @@
         <input class="et" type="text" value="${esc(it.title)}" aria-label="任务">
         <input class="ed" type="text" readonly value="${toInput(it.due).replace('T', ' ')}" data-v="${toInput(it.due)}" aria-label="截止时间">
         <div class="ewd">${wdText(it.due)}</div>
-        <div class="est-row">${chipHTML(it.est || 0)}</div>
+        <div class="est-row">${estBlockHTML(it.est || 0)}</div>
         <div class="eacts">
           <button class="del ghost danger" type="button">删除</button>
           <span class="spacer"></span>
@@ -826,17 +989,12 @@
     const remain = it.due - now;
     const warn = !it.done && !over && it.est && remain < it.est * 60000;
     const cls = over ? ' over' : warn ? ' warn' : '';
-    const calBtn = it.done ? '' : `<button class="cal" type="button" aria-label="加入日历">
-        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="8.3"/><path d="M12 7.6V12l3 1.9"/>
-        </svg>
-      </button>`;
     return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}" data-id="${it.id}">
       <button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>
       <div class="txt">
         <div class="title">${esc(it.title)}</div>
         <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left${cls}">${rel(it.due, now)}</span>`}${it.done ? '' : (it.est ? `<span class="est">需 ${dur(it.est)}</span>` : '')}</div>
-      </div>${calBtn}
+      </div>
     </li>`;
   }
 
@@ -854,62 +1012,60 @@
     doneBox.hidden = dn.length === 0;
     doneBox.open = open;
     summary.textContent = `已完成 ${dn.length}`;
-    allBtn.disabled = act.length === 0;
     clearBtn.hidden = dn.length === 0;
   }
 
-  /* ---------------- 提醒设置 ---------------- */
-  function syncOffUI() {
-    if (PRESETS.includes(offMin)) {
-      selOff.value = String(offMin);
-      customBox.hidden = true;
-    } else {
-      selOff.value = 'custom';
-      customBox.hidden = false;
-      const unit = offMin % 1440 === 0 ? 1440 : (offMin % 60 === 0 ? 60 : 1);
-      cu.value = String(unit);
-      cn.value = String(offMin / unit);
-    }
+  /* ---------------- 预估时长 ---------------- */
+
+  const estRowEl = $('#estRow');
+
+  function renderEstRow(v) {
+    estRowEl.innerHTML = '<span class="est-label">预估</span>' + estBlockHTML(v);
   }
 
-  selOff.addEventListener('change', () => {
-    if (selOff.value === 'custom') {
-      customBox.hidden = false;
-      const n = parseInt(cn.value, 10) || 1;
-      const u = parseInt(cu.value, 10) || 1;
-      offMin = Math.max(1, n * u);
-      saveOff();
+  function setEstValue(group, v) {
+    if (group.id === 'estRow') {
+      estMin = v;
     } else {
-      offMin = parseInt(selOff.value, 10);
-      saveOff();
-      customBox.hidden = true;
+      const row = group.closest('.row');
+      if (row) row.dataset.est = String(v);
     }
-  });
-
-  function readCustom() {
-    const n = Math.max(1, Math.min(parseInt(cn.value, 10) || 1, 999));
-    const u = parseInt(cu.value, 10) || 1;
-    offMin = Math.min(n * u, 525600);
-    saveOff();
   }
-  cn.addEventListener('input', readCustom);
-  cu.addEventListener('change', readCustom);
-
-  allBtn.addEventListener('click', exportAll);
 
   document.addEventListener('click', e => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
     const group = chip.closest('.est-row');
     if (!group) return;
-    for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', c === chip);
-    const val = parseInt(chip.dataset.est, 10) || 0;
-    if (group.id === 'estRow') {
-      estMin = val;
+    const custom = group.querySelector('.est-custom');
+
+    if (chip.dataset.est === 'custom') {
+      if (custom) custom.hidden = false;
+      for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', c === chip);
+      const n = parseInt(group.querySelector('.est-n').value, 10) || 1;
+      const u = parseInt(group.querySelector('.est-u').value, 10) || 1;
+      setEstValue(group, n * u);
     } else {
-      const row = chip.closest('.row');
-      if (row) row.dataset.est = String(val);
+      const v = parseInt(chip.dataset.est, 10) || 0;
+      if (custom) custom.hidden = true;
+      for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', parseInt(c.dataset.est, 10) === v);
+      setEstValue(group, v);
     }
+  });
+
+  function readEstCustom(e) {
+    const group = e.target.closest('.est-row');
+    if (!group) return;
+    const n = Math.max(1, Math.min(parseInt(group.querySelector('.est-n').value, 10) || 1, 999));
+    const u = parseInt(group.querySelector('.est-u').value, 10) || 1;
+    setEstValue(group, Math.min(n * u, 525600));
+  }
+
+  document.addEventListener('input', e => {
+    if (e.target.matches('.est-n')) readEstCustom(e);
+  });
+  document.addEventListener('change', e => {
+    if (e.target.matches('.est-u')) readEstCustom(e);
   });
 
   /* ---------------- 新增 ---------------- */
@@ -926,7 +1082,7 @@
     save();
     t.value = '';
     estMin = 0;
-    for (const c of document.querySelectorAll('#estRow .chip')) c.classList.toggle('on', c.dataset.est === '0');
+    renderEstRow(0);
     applyDue(d, defaultDueMs());
     render();
     t.focus();
@@ -976,11 +1132,6 @@
     }
 
     if (e.target.closest('.editor')) return;
-
-    if (e.target.closest('.cal')) {
-      exportOne(it);
-      return;
-    }
 
     if (e.target.closest('.check')) {
       it.done = !it.done;
@@ -1092,7 +1243,7 @@
   });
 
   applyDue(d, defaultDueMs());
-  syncOffUI();
+  renderEstRow(0);
   render();
   setInterval(() => { if (!editing) render(); }, 60000);
 
