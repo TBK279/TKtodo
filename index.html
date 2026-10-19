@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1044">
+<meta name="build" content="20261019-1049">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -172,20 +172,15 @@
   .title{ font-size:16px; word-break:break-word; }
   .meta{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; margin-top:5px; font-size:14px; color:var(--mute); }
   .due{ font-variant-numeric:tabular-nums; font-weight:500; color:var(--dim); }
-  .left{
+  .left, .est{
     display:inline-flex; align-items:center;
     padding:1px 8px 2px; border-radius:999px;
     font-size:12.5px; font-weight:600; line-height:1.5;
-    background:var(--blue-bg); color:var(--blue-fg);
+    background:var(--pill); color:var(--pill-fg);
   }
-  .left.warn{ background:var(--soon-bg); color:var(--soon-fg); }
-  .left.over{ background:var(--over-bg); color:var(--over-fg); }
-  .est{
-    display:inline-flex; align-items:center;
-    padding:1px 8px 2px; border-radius:999px;
-    font-size:12.5px; font-weight:600; line-height:1.5;
-    color:var(--mute); border:1px solid var(--line);
-  }
+  .left.blue, .est.blue{ background:var(--blue-bg); color:var(--blue-fg); }
+  .left.warn, .est.warn{ background:var(--soon-bg); color:var(--soon-fg); }
+  .left.over, .est.over{ background:var(--over-bg); color:var(--over-fg); }
   .over .due{ color:var(--over); }
   .done .title{ color:var(--mute); text-decoration:line-through; }
 
@@ -990,12 +985,12 @@
     const over = !it.done && it.due < now;
     const remain = it.due - now;
     const warn = !it.done && !over && it.est && remain < it.est * 60000;
-    const cls = over ? ' over' : warn ? ' warn' : '';
+    const cls = over ? ' over' : warn ? ' warn' : (remain <= 86400000 ? ' blue' : '');
     return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}" data-id="${it.id}">
       <button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>
       <div class="txt">
         <div class="title">${esc(it.title)}</div>
-        <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left${cls}">${rel(it.due, now)}</span>`}${it.done ? '' : (it.est ? `<span class="est">需 ${dur(it.est)}</span>` : '')}</div>
+        <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left${cls}">${rel(it.due, now)}</span>`}${it.done ? '' : (it.est ? `<span class="est${cls}">需 ${dur(it.est)}</span>` : '')}</div>
       </div>
     </li>`;
   }
