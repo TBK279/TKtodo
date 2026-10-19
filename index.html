@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1110">
+<meta name="build" content="20261019-1113">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -361,6 +361,12 @@
   }
   .witem.on{ color:var(--fg); font-weight:600; }
   .eunit{ font-size:12px; color:var(--mute); }
+  .est-ok{
+    margin-top:8px; min-height:34px; padding:0 20px;
+    font-size:13px; font-weight:500;
+    background:var(--fg); color:var(--bg);
+    border:0; border-radius:10px;
+  }
 
   /* ---------- 导入日历弹窗 ---------- */
   #calBack{
@@ -648,16 +654,19 @@
   function estBlockHTML(val) {
     const v = val || 0;
     const isCustom = v !== 0 && !EST_PRESETS.some(p => p[0] === v);
+    const customLabel = isCustom ? dur(v) : '自定义';
     const chips = EST_PRESETS.map(p =>
       `<button class="chip${p[0] === v ? ' on' : ''}" type="button" data-est="${p[0]}">${p[1]}</button>`
-    ).join('') + `<button class="chip${isCustom ? ' on' : ''}" type="button" data-est="custom">自定义</button>`;
+    ).join('') + `<button class="chip${isCustom ? ' on' : ''}" type="button" data-est="custom">${customLabel}</button>`;
 
     return chips +
-      `<span class="est-custom" data-v="${v}"${isCustom ? '' : ' hidden'}>` +
+      `<span class="est-custom" data-v="${v}" hidden>` +
       `<span class="ewrap">` +
       `<span class="ewheel est-h"></span><span class="eunit">小时</span>` +
       `<span class="ewheel est-m"></span><span class="eunit">分</span>` +
-      `</span></span>`;
+      `</span>` +
+      `<button class="est-ok" type="button">确定</button>` +
+      `</span>`;
   }
 
   function buildSmallWheel(el, count) {
@@ -1093,6 +1102,25 @@
   }
 
   document.addEventListener('click', e => {
+    const okBtn = e.target.closest('.est-ok');
+    if (okBtn) {
+      const box = okBtn.closest('.est-custom');
+      const group = box.closest('.est-row');
+      const v = smallWheelIdx(box.querySelector('.est-h')) * 60 + smallWheelIdx(box.querySelector('.est-m'));
+      if (v === 0) {
+        toast('预估不能是 0，请拨到至少 1 分钟');
+        return;
+      }
+      setEstValue(group, v);
+      box.hidden = true;
+      const chipEl = group.querySelector('.chip[data-est="custom"]');
+      if (chipEl) {
+        chipEl.textContent = dur(v);
+        for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', c === chipEl);
+      }
+      return;
+    }
+
     const chip = e.target.closest('.chip');
     if (!chip) return;
     const group = chip.closest('.est-row');
@@ -1117,6 +1145,8 @@
       const v = parseInt(chip.dataset.est, 10) || 0;
       if (custom) custom.hidden = true;
       for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', parseInt(c.dataset.est, 10) === v);
+      const chipCustom = group.querySelector('.chip[data-est="custom"]');
+      if (chipCustom) chipCustom.textContent = '自定义';
       setEstValue(group, v);
     }
   });
