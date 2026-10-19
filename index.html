@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1129">
+<meta name="build" content="20261019-1134">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -463,9 +463,31 @@
   .cf-acts button{ flex:1; }
   #cfOk{ background:var(--over); color:#fff; }
 
+  /* ---------- 更新提示条 ---------- */
+  #updBar{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 16px);
+    display:flex; align-items:center; gap:10px;
+    background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:9px 10px 9px 16px;
+    box-shadow:0 8px 28px rgba(0,0,0,.18);
+    font-size:14px; color:var(--fg);
+    z-index:8; white-space:nowrap;
+  }
+  #updBar[hidden]{ display:none; }
+  #updBar::before{
+    content:""; width:7px; height:7px; border-radius:50%;
+    background:#ff3b30; animation:pulse 1.6s ease-in-out infinite;
+  }
+  #updGo{ min-height:34px; font-size:13px; padding:0 12px; border-radius:9px; }
+  #updX{
+    background:none; border:0; color:var(--mute);
+    font-size:18px; line-height:1; padding:0 6px; min-height:34px;
+  }
+
   /* ---------- 提示 ---------- */
   #toast{
-    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 26px);
+    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 84px);
     transform:translateX(-50%);
     max-width:min(88vw,420px);
     background:#1c1c1f; color:#f4f4f6;
@@ -618,6 +640,12 @@
       <button id="cfCancel" class="ghost" type="button">取消</button>
       <button id="cfOk" type="button">删除</button>
     </div>
+  </div>
+
+  <div id="updBar" hidden>
+    <span>有新版本</span>
+    <button id="updGo" type="button">立即更新</button>
+    <button id="updX" type="button" aria-label="关闭">×</button>
   </div>
 
   <div id="toast" hidden></div>
@@ -1553,6 +1581,11 @@
 
   /* ---------------- 检查更新 ---------------- */
   const updBtn = $('#upd');
+  const updBar = $('#updBar');
+  const updGo = $('#updGo');
+  const updX = $('#updX');
+  const UPD_IGNORE_KEY = 'ddl.updignore.v1';
+  let remoteBuild = null;
   let autoBusy = false;
   let lastAuto = 0;
 
@@ -1565,15 +1598,28 @@
     return m ? m[1] : null;
   }
 
-  // 打开时静默检查：有新版本就在按钮上亮红点
+  function hideUpdBar() {
+    updBar.hidden = true;
+  }
+
+  function showUpdBar(build) {
+    let ignored = null;
+    try { ignored = localStorage.getItem(UPD_IGNORE_KEY); } catch (e) {}
+    if (ignored === build) return;
+    updBar.hidden = false;
+  }
+
+  // 打开时静默检查：有新版本就亮红点 + 底部提示条
   async function autoCheck() {
     if (autoBusy) return;
     autoBusy = true;
     try {
       const b = await fetchRemoteBuild();
       if (b && b !== currentBuild()) {
+        remoteBuild = b;
         updBtn.classList.add('has-new');
         updBtn.textContent = '有新版本，点此更新';
+        showUpdBar(b);
       }
     } catch (err) {}
     autoBusy = false;
@@ -1592,12 +1638,15 @@
     try {
       const b = await fetchRemoteBuild();
       if (b && b !== currentBuild()) {
+        remoteBuild = b;
         updBtn.textContent = '发现新版本，正在更新…';
+        hideUpdBar();
         location.replace(location.pathname + '?v=' + Date.now());
         return;
       }
       updBtn.classList.remove('has-new');
       updBtn.textContent = '已是最新版本';
+      hideUpdBar();
       setTimeout(() => {
         updBtn.textContent = '检查更新';
         updBtn.disabled = false;
@@ -1609,6 +1658,23 @@
   }
 
   updBtn.addEventListener('click', checkUpdate);
+
+  updGo.addEventListener('click', () => {
+    hideUpdBar();
+    if (remoteBuild) {
+      try { localStorage.setItem(UPD_IGNORE_KEY, remoteBuild); } catch (e) {}
+    }
+    location.replace(location.pathname + '?v=' + Date.now());
+  });
+
+  updX.addEventListener('click', () => {
+    hideUpdBar();
+    if (remoteBuild) {
+      try { localStorage.setItem(UPD_IGNORE_KEY, remoteBuild); } catch (e) {}
+      updBtn.classList.remove('has-new');
+      updBtn.textContent = '检查更新';
+    }
+  });
 
   // 安装成 app 后常常是“恢复”而不是重新加载，所以在回到前台时也查一次
   setTimeout(maybeAutoCheck, 1000);
