@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1100">
+<meta name="build" content="20261019-1110">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -339,16 +339,28 @@
   .pk-acts .spacer{ flex:1; }
 
   .est-custom{
-    display:inline-flex; align-items:center; gap:6px;
-    width:100%; justify-content:center; margin-top:6px;
+    display:flex; flex-direction:column; align-items:center;
+    width:100%; margin-top:6px;
   }
   .est-custom[hidden]{ display:none; }
-  .est-custom input, .est-custom select{
-    font:inherit; font-size:16px; color:var(--fg);
-    background:var(--bg); border:1px solid var(--line);
-    border-radius:9px; padding:0 8px; min-height:34px; outline:none;
+  .ewrap{ display:flex; align-items:center; justify-content:center; gap:6px; }
+  .ewheel{
+    width:56px; height:136px; overflow-y:auto;
+    scroll-snap-type:y mandatory;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+    scrollbar-width:none; text-align:center;
+    background:var(--bg); border:1px solid var(--line); border-radius:10px;
   }
-  .est-custom input{ width:64px; text-align:center; }
+  .ewheel::-webkit-scrollbar{ display:none; }
+  .ewheel::before, .ewheel::after{ content:""; display:block; height:51px; }
+  .witem{
+    height:34px; line-height:34px; scroll-snap-align:center;
+    font-size:16px; color:var(--mute);
+    font-variant-numeric:tabular-nums;
+  }
+  .witem.on{ color:var(--fg); font-weight:600; }
+  .eunit{ font-size:12px; color:var(--mute); }
 
   /* ---------- 导入日历弹窗 ---------- */
   #calBack{
@@ -631,12 +643,7 @@
   }
 
   const EST_PRESETS = [[0, '无'], [30, '半小时'], [60, '1 小时'], [120, '2 小时']];
-
-  function estUnitOf(v) {
-    if (v % 1440 === 0) return 1440;
-    if (v % 60 === 0) return 60;
-    return 1;
-  }
+  const EST_ITEM_H = 34;
 
   function estBlockHTML(val) {
     const v = val || 0;
@@ -645,17 +652,69 @@
       `<button class="chip${p[0] === v ? ' on' : ''}" type="button" data-est="${p[0]}">${p[1]}</button>`
     ).join('') + `<button class="chip${isCustom ? ' on' : ''}" type="button" data-est="custom">自定义</button>`;
 
-    const unit = isCustom ? estUnitOf(v) : 60;
-    const num = isCustom ? Math.max(1, Math.round(v / unit)) : 2;
-
     return chips +
-      `<span class="est-custom"${isCustom ? '' : ' hidden'}>` +
-      `<input class="est-n" type="number" min="1" max="999" inputmode="numeric" value="${num}">` +
-      `<select class="est-u">` +
-      `<option value="1"${unit === 1 ? ' selected' : ''}>分钟</option>` +
-      `<option value="60"${unit === 60 ? ' selected' : ''}>小时</option>` +
-      `<option value="1440"${unit === 1440 ? ' selected' : ''}>天</option>` +
-      `</select></span>`;
+      `<span class="est-custom" data-v="${v}"${isCustom ? '' : ' hidden'}>` +
+      `<span class="ewrap">` +
+      `<span class="ewheel est-h"></span><span class="eunit">小时</span>` +
+      `<span class="ewheel est-m"></span><span class="eunit">分</span>` +
+      `</span></span>`;
+  }
+
+  function buildSmallWheel(el, count) {
+    el.textContent = '';
+    for (let i = 0; i < count; i++) {
+      const d = document.createElement('div');
+      d.className = 'witem';
+      d.textContent = String(i).padStart(2, '0');
+      el.appendChild(d);
+    }
+  }
+
+  function smallWheelIdx(el) {
+    const i = Math.round(el.scrollTop / EST_ITEM_H);
+    return Math.max(0, Math.min(i, el.children.length - 1));
+  }
+
+  function markSmallWheel(el) {
+    const idx = smallWheelIdx(el);
+    for (let i = 0; i < el.children.length; i++) {
+      el.children[i].classList.toggle('on', i === idx);
+    }
+  }
+
+  function setSmallWheel(el, idx) {
+    el.scrollTop = idx * EST_ITEM_H;
+    markSmallWheel(el);
+  }
+
+  function estWheelChanged(box) {
+    const group = box.closest('.est-row');
+    if (!group) return;
+    const h = smallWheelIdx(box.querySelector('.est-h'));
+    const m = smallWheelIdx(box.querySelector('.est-m'));
+    const chip = group.querySelector('.chip[data-est="custom"]');
+    if (chip) {
+      for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', c === chip);
+    }
+    setEstValue(group, h * 60 + m);
+  }
+
+  function initEstWheels(root) {
+    for (const box of root.querySelectorAll('.est-custom')) {
+      const hEl = box.querySelector('.est-h');
+      const mEl = box.querySelector('.est-m');
+      if (!hEl || !mEl || hEl.children.length) continue;
+
+      buildSmallWheel(hEl, 24);
+      buildSmallWheel(mEl, 60);
+
+      const v = parseInt(box.dataset.v, 10) || 0;
+      setSmallWheel(hEl, Math.floor(v / 60) % 24);
+      setSmallWheel(mEl, v % 60);
+
+      hEl.addEventListener('scroll', () => { markSmallWheel(hEl); estWheelChanged(box); }, { passive: true });
+      mEl.addEventListener('scroll', () => { markSmallWheel(mEl); estWheelChanged(box); }, { passive: true });
+    }
   }
 
   /* ---------------- 日期选择器 ---------------- */
@@ -1005,6 +1064,7 @@
       ? act.map(x => rowHTML(x, now)).join('')
       : '<li class="empty">还没有待办</li>';
     doneList.innerHTML = dn.map(x => rowHTML(x, now)).join('');
+    initEstWheels(list);
 
     doneBox.hidden = dn.length === 0;
     doneBox.open = open;
@@ -1018,6 +1078,7 @@
 
   function renderEstRow(v) {
     estRowEl.innerHTML = '<span class="est-label">预估</span>' + estBlockHTML(v);
+    initEstWheels(estRowEl);
   }
 
   function setEstValue(group, v) {
@@ -1027,6 +1088,8 @@
       const row = group.closest('.row');
       if (row) row.dataset.est = String(v);
     }
+    const box = group.querySelector('.est-custom');
+    if (box) box.dataset.v = String(v);
   }
 
   document.addEventListener('click', e => {
@@ -1039,30 +1102,23 @@
     if (chip.dataset.est === 'custom') {
       if (custom) custom.hidden = false;
       for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', c === chip);
-      const n = parseInt(group.querySelector('.est-n').value, 10) || 1;
-      const u = parseInt(group.querySelector('.est-u').value, 10) || 1;
-      setEstValue(group, n * u);
+      initEstWheels(group);
+
+      const hEl = group.querySelector('.est-h');
+      const mEl = group.querySelector('.est-m');
+      if (hEl && mEl) {
+        let cur = parseInt(custom.dataset.v, 10) || 0;
+        if (cur === 0) cur = 30;
+        setSmallWheel(hEl, Math.floor(cur / 60) % 24);
+        setSmallWheel(mEl, cur % 60);
+        setEstValue(group, cur);
+      }
     } else {
       const v = parseInt(chip.dataset.est, 10) || 0;
       if (custom) custom.hidden = true;
       for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', parseInt(c.dataset.est, 10) === v);
       setEstValue(group, v);
     }
-  });
-
-  function readEstCustom(e) {
-    const group = e.target.closest('.est-row');
-    if (!group) return;
-    const n = Math.max(1, Math.min(parseInt(group.querySelector('.est-n').value, 10) || 1, 999));
-    const u = parseInt(group.querySelector('.est-u').value, 10) || 1;
-    setEstValue(group, Math.min(n * u, 525600));
-  }
-
-  document.addEventListener('input', e => {
-    if (e.target.matches('.est-n')) readEstCustom(e);
-  });
-  document.addEventListener('change', e => {
-    if (e.target.matches('.est-u')) readEstCustom(e);
   });
 
   /* ---------------- 新增 ---------------- */
@@ -1076,6 +1132,9 @@
     if (!Number.isFinite(due)) { openPicker(d); return; }
 
     items.push({ id: uid(), title, due, done: false, doneAt: 0, created: Date.now(), est: estMin });
+    if (estMin === 0 && estRowEl.querySelector('.chip[data-est="custom"].on')) {
+      toast('预估为 0 小时 0 分，已按「无」处理');
+    }
     save();
     t.value = '';
     estMin = 0;
@@ -1108,6 +1167,9 @@
       const due = rawDue ? new Date(rawDue).getTime() : NaN;
       if (Number.isFinite(due)) it.due = due;
       it.est = parseInt(row.dataset.est, 10) || 0;
+      if (it.est === 0 && row.querySelector('.chip[data-est="custom"].on')) {
+        toast('预估为 0 小时 0 分，已按「无」处理');
+      }
       save();
       editing = null;
       render();
