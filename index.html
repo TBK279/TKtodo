@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1134">
+<meta name="build" content="20261019-1138">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -31,6 +31,8 @@
     --over-fg:#c0292f;
     --blue-bg:#e7f0fe;
     --blue-fg:#0b62d6;
+    --ok-bg:#e6f6ea;
+    --ok-fg:#1a7f37;
   }
   @media (prefers-color-scheme: dark){
     :root{
@@ -51,6 +53,8 @@
       --over-fg:#ff8585;
       --blue-bg:#13263f;
       --blue-fg:#6cb0ff;
+      --ok-bg:#12291a;
+      --ok-fg:#5ed27a;
     }
   }
   *{ box-sizing:border-box; }
@@ -179,6 +183,7 @@
     background:var(--pill); color:var(--pill-fg);
   }
   .left.blue, .est.blue{ background:var(--blue-bg); color:var(--blue-fg); }
+  .left.early, .est.early{ background:var(--ok-bg); color:var(--ok-fg); }
   .left.warn, .est.warn{ background:var(--soon-bg); color:var(--soon-fg); }
   .left.over, .est.over{ background:var(--over-bg); color:var(--over-fg); }
   .over .due{ color:var(--over); }
@@ -1225,11 +1230,24 @@
     const remain = it.due - now;
     const warn = !it.done && !over && it.est && remain < it.est * 60000;
     const cls = over ? ' over' : warn ? ' warn' : (remain <= 86400000 ? ' blue' : '');
+
+    let metaHTML = `<span class="due">${fmt(it.due)}</span>`;
+    if (it.done) {
+      const late = it.doneAt && it.doneAt > it.due;
+      const early = !late && it.doneAt && (it.due - it.doneAt) > 86400000;
+      const dcls = late ? ' over' : early ? ' early' : '';
+      const label = late ? '逾期' : early ? '提前' : '如期';
+      metaHTML += `<span class="left${dcls}">${label}</span>`;
+    } else {
+      metaHTML += `<span class="left${cls}">${rel(it.due, now)}</span>`;
+      if (it.est) metaHTML += `<span class="est${cls}">需 ${dur(it.est)}</span>`;
+    }
+
     return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}" data-id="${it.id}">
       <button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>
       <div class="txt">
         <div class="title">${esc(it.title)}</div>
-        <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left${cls}">${rel(it.due, now)}</span>`}${it.done ? '' : (it.est ? `<span class="est${cls}">需 ${dur(it.est)}</span>` : '')}</div>
+        <div class="meta">${metaHTML}</div>
       </div>
     </li>`;
   }
