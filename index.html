@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1049">
+<meta name="build" content="20261019-1100">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -630,7 +630,7 @@
     return `${min} 分钟`;
   }
 
-  const EST_PRESETS = [[0, '无'], [60, '1 小时'], [480, '半天'], [1440, '1 天']];
+  const EST_PRESETS = [[0, '无'], [30, '半小时'], [60, '1 小时'], [120, '2 小时']];
 
   function estUnitOf(v) {
     if (v % 1440 === 0) return 1440;
