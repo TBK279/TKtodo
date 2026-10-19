@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1126">
+<meta name="build" content="20261019-1129">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -1160,21 +1160,27 @@
 
   /* ---------------- 渲染 ---------------- */
   function editorHTML(it) {
-    const titlePart = renaming
-      ? `<input class="et" type="text" value="${esc(it.title)}" aria-label="任务">`
-      : `<div class="etext">${esc(it.title)}</div>`;
-    const renameBtn = renaming
-      ? ''
-      : '<button class="act-rename ghost" type="button">重命名</button>';
+    if (renaming) {
+      return `<li class="row editing" data-id="${it.id}" data-est="${it.est || 0}">
+        <div class="editor">
+          <input class="et" type="text" value="${esc(it.title)}" aria-label="任务">
+          <div class="eacts">
+            <span class="spacer"></span>
+            <button class="rename-cancel ghost" type="button">取消</button>
+            <button class="rename-ok" type="button">确认</button>
+          </div>
+        </div>
+      </li>`;
+    }
 
     return `<li class="row editing" data-id="${it.id}" data-est="${it.est || 0}">
       <div class="editor">
-        ${titlePart}
+        <div class="etext">${esc(it.title)}</div>
         <input class="ed" type="text" readonly value="${toInput(it.due).replace('T', ' ')}" data-v="${toInput(it.due)}" aria-label="截止时间">
         <div class="ewd">${wdText(it.due)}</div>
         <div class="est-row">${estBlockHTML(it.est || 0)}</div>
         <div class="eacts">
-          ${renameBtn}
+          <button class="act-rename ghost" type="button">重命名</button>
           <button class="del ghost danger" type="button">删除</button>
           <span class="spacer"></span>
           <button class="cancel ghost" type="button">取消</button>
@@ -1338,6 +1344,22 @@
       return;
     }
 
+    if (e.target.closest('.rename-ok')) {
+      const el = row.querySelector('.et');
+      const v = el ? el.value.trim() : '';
+      it.title = v || '新待办';
+      renaming = false;
+      save();
+      render();
+      return;
+    }
+
+    if (e.target.closest('.rename-cancel')) {
+      renaming = false;
+      render();
+      return;
+    }
+
     if (e.target.closest('.save')) {
       const el = row.querySelector('.et');
       if (el) {
@@ -1397,11 +1419,15 @@
   list.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.classList.contains('et')) {
       e.preventDefault();
-      const saveBtn = e.target.closest('.row').querySelector('.save');
-      if (saveBtn) saveBtn.click();
+      const btn = e.target.closest('.row').querySelector('.rename-ok, .save');
+      if (btn) btn.click();
     }
     if (e.key === 'Escape' && e.target.classList.contains('et')) {
-      editing = null;
+      if (renaming) {
+        renaming = false;
+      } else {
+        editing = null;
+      }
       render();
     }
   });
