@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-1138">
+<meta name="build" content="20261019-1141">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -514,6 +514,7 @@
   }
   .link:active{ opacity:.55; }
   .link:disabled{ opacity:.55; cursor:default; }
+  .buildtag{ display:block; font-size:11px; color:var(--mute); opacity:.7; margin-top:2px; }
   .link.has-new{
     color:var(--fg); font-weight:600; text-decoration:none;
   }
@@ -561,6 +562,7 @@
 
   <div class="foot">
     <button id="upd" class="link" type="button">检查更新</button>
+    <span class="buildtag" id="buildTag"></span>
   </div>
 
   <div id="pickerBack" hidden></div>
@@ -1702,6 +1704,7 @@
 
   applyDue(d, defaultDueMs());
   renderEstRow(0);
+  document.getElementById('buildTag').textContent = 'v ' + currentBuild();
   render();
   setInterval(() => { if (!editing) render(); }, 60000);
 
