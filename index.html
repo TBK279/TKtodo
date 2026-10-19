@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261019-0344">
+<meta name="build" content="20261019-1014">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -29,6 +29,8 @@
     --soon-fg:#955700;
     --over-bg:#fbe5e6;
     --over-fg:#c0292f;
+    --blue-bg:#e7f0fe;
+    --blue-fg:#0b62d6;
   }
   @media (prefers-color-scheme: dark){
     :root{
@@ -47,6 +49,8 @@
       --soon-fg:#f2b862;
       --over-bg:#331a1c;
       --over-fg:#ff8585;
+      --blue-bg:#13263f;
+      --blue-fg:#6cb0ff;
     }
   }
   *{ box-sizing:border-box; }
@@ -172,10 +176,16 @@
     display:inline-flex; align-items:center;
     padding:1px 8px 2px; border-radius:999px;
     font-size:12.5px; font-weight:600; line-height:1.5;
-    background:var(--pill); color:var(--pill-fg);
+    background:var(--blue-bg); color:var(--blue-fg);
   }
-  .soon .left{ background:var(--soon-bg); color:var(--soon-fg); }
-  .over .left{ background:var(--over-bg); color:var(--over-fg); }
+  .left.warn{ background:var(--soon-bg); color:var(--soon-fg); }
+  .left.over{ background:var(--over-bg); color:var(--over-fg); }
+  .est{
+    display:inline-flex; align-items:center;
+    padding:1px 8px 2px; border-radius:999px;
+    font-size:12.5px; font-weight:600; line-height:1.5;
+    color:var(--mute); border:1px solid var(--line);
+  }
   .over .due{ color:var(--over); }
   .done .title{ color:var(--mute); text-decoration:line-through; }
 
@@ -251,6 +261,17 @@
     font-size:13px; min-height:34px; padding:0 14px; border-radius:9px;
   }
 
+  .est-row{
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
+    gap:6px; margin-top:12px;
+  }
+  .est-label{ font-size:13px; color:var(--mute); margin-right:2px; }
+  .chip{
+    background:none; border:1px solid var(--line); color:var(--mute);
+    border-radius:999px; padding:0 11px; min-height:30px;
+    font-size:13px; font-weight:500;
+  }
+  .chip.on{ background:var(--fg); border-color:var(--fg); color:var(--bg); }
   /* ---------- 日期选择器 ---------- */
   #d, .ed{ cursor:pointer; }
   #d::placeholder{ color:var(--mute); }
@@ -370,6 +391,15 @@
       <button id="b" type="submit">添加</button>
     </div>
     <div class="wd" id="wd"></div>
+    <div class="est-row" id="estRow">
+      <span class="est-label">预估</span>
+      <button class="chip on" type="button" data-est="0">无</button>
+      <button class="chip" type="button" data-est="30">30 分</button>
+      <button class="chip" type="button" data-est="60">1 小时</button>
+      <button class="chip" type="button" data-est="120">2 小时</button>
+      <button class="chip" type="button" data-est="240">半天</button>
+      <button class="chip" type="button" data-est="1440">1 天</button>
+    </div>
   </form>
 
   <ul id="list"></ul>
@@ -461,6 +491,7 @@
   } catch (e) {}
 
   let editing = null;
+  let estMin = 0;
   let toastTimer = 0;
 
   const PRESETS = [0, 15, 30, 60, 180, 1440, 2880, 4320];
@@ -526,6 +557,20 @@
       s = diff < 0 ? `已过 ${unit}` : `还有 ${unit}`;
     }
     return `周${w} · ${s}`;
+  }
+
+  function dur(min) {
+    if (min >= 1440 && min % 1440 === 0) return `${min / 1440} 天`;
+    if (min >= 60) return min % 60 === 0 ? `${min / 60} 小时` : `${Math.floor(min / 60)} 小时 ${min % 60} 分`;
+    return `${min} 分钟`;
+  }
+
+  const EST_OPTS = [[0, '无'], [30, '30 分'], [60, '1 小时'], [120, '2 小时'], [240, '半天'], [1440, '1 天']];
+
+  function chipHTML(sel) {
+    return EST_OPTS.map(o =>
+      `<button class="chip${o[0] === sel ? ' on' : ''}" type="button" data-est="${o[0]}">${o[1]}</button>`
+    ).join('');
   }
 
   /* ---------------- 日期选择器 ---------------- */
@@ -758,11 +803,12 @@
 
   /* ---------------- 渲染 ---------------- */
   function editorHTML(it) {
-    return `<li class="row editing" data-id="${it.id}">
+    return `<li class="row editing" data-id="${it.id}" data-est="${it.est || 0}">
       <div class="editor">
         <input class="et" type="text" value="${esc(it.title)}" aria-label="任务">
         <input class="ed" type="text" readonly value="${toInput(it.due).replace('T', ' ')}" data-v="${toInput(it.due)}" aria-label="截止时间">
         <div class="ewd">${wdText(it.due)}</div>
+        <div class="est-row">${chipHTML(it.est || 0)}</div>
         <div class="eacts">
           <button class="del ghost danger" type="button">删除</button>
           <span class="spacer"></span>
@@ -777,17 +823,19 @@
     if (it.id === editing) return editorHTML(it);
 
     const over = !it.done && it.due < now;
-    const soon = !it.done && !over && it.due - now <= 86400000;
+    const remain = it.due - now;
+    const warn = !it.done && !over && it.est && remain < it.est * 60000;
+    const cls = over ? ' over' : warn ? ' warn' : '';
     const calBtn = it.done ? '' : `<button class="cal" type="button" aria-label="加入日历">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="8.3"/><path d="M12 7.6V12l3 1.9"/>
         </svg>
       </button>`;
-    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}${soon ? ' soon' : ''}" data-id="${it.id}">
+    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}" data-id="${it.id}">
       <button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>
       <div class="txt">
         <div class="title">${esc(it.title)}</div>
-        <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left">${rel(it.due, now)}</span>`}</div>
+        <div class="meta"><span class="due">${fmt(it.due)}</span>${it.done ? '' : `<span class="left${cls}">${rel(it.due, now)}</span>`}${it.done ? '' : (it.est ? `<span class="est">需 ${dur(it.est)}</span>` : '')}</div>
       </div>${calBtn}
     </li>`;
   }
@@ -849,6 +897,21 @@
 
   allBtn.addEventListener('click', exportAll);
 
+  document.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    const group = chip.closest('.est-row');
+    if (!group) return;
+    for (const c of group.querySelectorAll('.chip')) c.classList.toggle('on', c === chip);
+    const val = parseInt(chip.dataset.est, 10) || 0;
+    if (group.id === 'estRow') {
+      estMin = val;
+    } else {
+      const row = chip.closest('.row');
+      if (row) row.dataset.est = String(val);
+    }
+  });
+
   /* ---------------- 新增 ---------------- */
   f.addEventListener('submit', e => {
     e.preventDefault();
@@ -859,9 +922,11 @@
     const due = new Date(raw).getTime();
     if (!Number.isFinite(due)) { openPicker(d); return; }
 
-    items.push({ id: uid(), title, due, done: false, doneAt: 0, created: Date.now() });
+    items.push({ id: uid(), title, due, done: false, doneAt: 0, created: Date.now(), est: estMin });
     save();
     t.value = '';
+    estMin = 0;
+    for (const c of document.querySelectorAll('#estRow .chip')) c.classList.toggle('on', c.dataset.est === '0');
     applyDue(d, defaultDueMs());
     render();
     t.focus();
@@ -889,6 +954,7 @@
       const rawDue = row.querySelector('.ed').dataset.v;
       const due = rawDue ? new Date(rawDue).getTime() : NaN;
       if (Number.isFinite(due)) it.due = due;
+      it.est = parseInt(row.dataset.est, 10) || 0;
       save();
       editing = null;
       render();
