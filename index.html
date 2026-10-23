@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261023-2056">
+<meta name="build" content="20261023-2103">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -308,8 +308,8 @@
     flex:1 1 auto; min-height:36px; font-size:13px; padding:0 10px; border-radius:10px;
   }
   .sel-acts button[hidden]{ display:none; }
-  body.sel{ padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 136px); }
-  body.sel #toast{ bottom:calc(env(safe-area-inset-bottom, 0px) + 158px); }
+  body.sel{ padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 196px); }
+  body.sel #toast{ bottom:calc(env(safe-area-inset-bottom, 0px) + 218px); }
 
   .est-row{
     display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
@@ -776,9 +776,13 @@
   </div>
 
   <div id="selBar" hidden>
-    <span id="selCount">点条目选中</span>
+    <span id="selCount">点条目选中，可批量完成或删除</span>
+    <div class="sel-acts sel-scope">
+      <button id="selAllOpen" class="ghost" type="button">全选未完成</button>
+      <button id="selAllDone" class="ghost" type="button">全选已完成</button>
+      <button id="selNone" class="ghost" type="button">清空选择</button>
+    </div>
     <div class="sel-acts">
-      <button id="selAll" class="ghost" type="button">全选</button>
       <button id="selDone" class="ghost" type="button">完成</button>
       <button id="selUndone" class="ghost" type="button">取消完成</button>
       <button id="selDel" class="ghost danger" type="button">删除</button>
@@ -813,7 +817,8 @@
   const bkText = $('#bkText'), bkPasteGo = $('#bkPasteGo'), bkClose = $('#bkClose');
   const doneSelect = $('#doneSelect'), doneMore = $('#doneMore');
   const selOpen = $('#selOpen'), selBar = $('#selBar'), selCount = $('#selCount');
-  const selAll = $('#selAll'), selDone = $('#selDone'), selUndone = $('#selUndone');
+  const selAllOpen = $('#selAllOpen'), selAllDone = $('#selAllDone'), selNone = $('#selNone');
+  const selDone = $('#selDone'), selUndone = $('#selUndone');
   const selDel = $('#selDel'), selExit = $('#selExit');
   const toastEl = $('#toast');
 
@@ -1766,14 +1771,22 @@
   /* ---------------- 多选 ---------------- */
   function updateSelBar() {
     const picked = items.filter(x => selIds.has(x.id));
-    const doneN = picked.filter(x => x.done).length;
+    const openTotal = items.length - items.filter(x => x.done).length;
+    const doneTotal = items.filter(x => x.done).length;
+    const pickedOpen = picked.filter(x => !x.done).length;
+    const pickedDone = picked.length - pickedOpen;
 
     selCount.textContent = picked.length
-      ? `已选 ${picked.length} 条` + (doneN ? `（其中已完成 ${doneN}）` : '')
+      ? `已选 ${picked.length} 条（未完成 ${pickedOpen} · 已完成 ${pickedDone}）`
       : '点条目选中，可批量完成或删除';
-    selDone.hidden = picked.length === doneN;        // 没有未完成的就不显示「完成」
-    selUndone.hidden = doneN === 0;
-    selAll.textContent = items.length && picked.length === items.length ? '全不选' : '全选';
+
+    // 两个范围各管各的，互不影响
+    selAllOpen.disabled = openTotal === 0;
+    selAllDone.disabled = doneTotal === 0;
+    selNone.disabled = picked.length === 0;
+
+    selDone.hidden = pickedOpen === 0;               // 没选未完成就不显示「完成」
+    selUndone.hidden = pickedDone === 0;
     selDel.disabled = picked.length === 0;
   }
 
@@ -1845,9 +1858,18 @@
   doneSelect.addEventListener('click', () => setSelMode(true));
   selOpen.addEventListener('click', () => setSelMode(true));
   selExit.addEventListener('click', () => setSelMode(false));
-  selAll.addEventListener('click', () => {
-    if (selIds.size === items.length) selIds.clear();
-    else for (const it of items) selIds.add(it.id);
+  selAllOpen.addEventListener('click', () => {
+    for (const it of items) if (!it.done) selIds.add(it.id);
+    refreshPicks();
+    updateSelBar();
+  });
+  selAllDone.addEventListener('click', () => {
+    for (const it of items) if (it.done) selIds.add(it.id);
+    refreshPicks();
+    updateSelBar();
+  });
+  selNone.addEventListener('click', () => {
+    selIds.clear();
     refreshPicks();
     updateSelBar();
   });
