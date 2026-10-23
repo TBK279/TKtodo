@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261023-2049">
+<meta name="build" content="20261023-2056">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -257,10 +257,59 @@
     padding:15px 0;
   }
   summary::-webkit-details-marker{ display:none; }
-  #clearDone{
-    display:block; margin:4px auto 14px;
+  .done-bar{
+    display:flex; align-items:center; justify-content:center;
+    flex-wrap:wrap; gap:8px; margin:0 0 10px;
+  }
+  .done-bar button{
+    min-height:32px; font-size:12.5px; padding:0 12px; border-radius:9px;
+  }
+  #doneMore{
+    display:block; margin:8px auto 14px;
     font-size:13px; min-height:34px; padding:0 14px; border-radius:9px;
   }
+  #doneMore[hidden]{ display:none; }
+
+  /* ---------- 多选 ---------- */
+  .pick{
+    flex:0 0 40px; width:40px; height:40px; min-height:40px;
+    margin:-7px -8px -7px -10px; padding:0;
+    background:none; border:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pick i{
+    width:20px; height:20px; border-radius:6px;
+    border:1.5px solid var(--mute);
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s, border-color .15s;
+  }
+  .pick.on i{ background:var(--fg); border-color:var(--fg); }
+  .pick.on i::after{
+    content:""; width:4px; height:8px;
+    border:solid var(--card); border-width:0 2px 2px 0;
+    transform:rotate(45deg) translate(-1px,-1px);
+  }
+  .row.sel{ background:var(--bg); border-radius:10px; }
+
+  #selBar{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);
+    width:min(92vw, 460px);
+    display:flex; flex-direction:column; gap:8px;
+    background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:9px 12px;
+    box-shadow:0 8px 28px rgba(0,0,0,.18);
+    z-index:17;
+  }
+  #selBar[hidden]{ display:none; }
+  #selCount{ font-size:12.5px; color:var(--mute); text-align:center; }
+  .sel-acts{ display:flex; flex-wrap:wrap; gap:6px; }
+  .sel-acts button{
+    flex:1 1 auto; min-height:36px; font-size:13px; padding:0 10px; border-radius:10px;
+  }
+  .sel-acts button[hidden]{ display:none; }
+  body.sel{ padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 136px); }
+  body.sel #toast{ bottom:calc(env(safe-area-inset-bottom, 0px) + 158px); }
 
   .est-row{
     display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
@@ -581,12 +630,17 @@
 
   <div class="tools">
     <button id="calOpen" class="ghost" type="button">导入日历</button>
+    <button id="selOpen" class="ghost" type="button">多选</button>
   </div>
 
   <details id="doneBox" hidden>
     <summary id="summary"></summary>
+    <div class="done-bar">
+      <button id="doneSelect" class="ghost" type="button">多选</button>
+      <button id="clearDone" class="ghost danger" type="button">清空已完成</button>
+    </div>
     <ul id="doneList"></ul>
-    <button id="clearDone" class="ghost danger" type="button">清空已完成</button>
+    <button id="doneMore" class="ghost" type="button" hidden>展开全部</button>
   </details>
 
   <div class="trashbar">
@@ -721,6 +775,17 @@
     <button id="updX" type="button" aria-label="关闭">×</button>
   </div>
 
+  <div id="selBar" hidden>
+    <span id="selCount">点条目选中</span>
+    <div class="sel-acts">
+      <button id="selAll" class="ghost" type="button">全选</button>
+      <button id="selDone" class="ghost" type="button">完成</button>
+      <button id="selUndone" class="ghost" type="button">取消完成</button>
+      <button id="selDel" class="ghost danger" type="button">删除</button>
+      <button id="selExit" type="button">退出</button>
+    </div>
+  </div>
+
   <div id="toast" hidden></div>
 </main>
 
@@ -746,6 +811,10 @@
   const bkExport = $('#bkExport'), bkPick = $('#bkPick'), bkFile = $('#bkFile');
   const bkPreview = $('#bkPreview'), bkMerge = $('#bkMerge'), bkReplace = $('#bkReplace');
   const bkText = $('#bkText'), bkPasteGo = $('#bkPasteGo'), bkClose = $('#bkClose');
+  const doneSelect = $('#doneSelect'), doneMore = $('#doneMore');
+  const selOpen = $('#selOpen'), selBar = $('#selBar'), selCount = $('#selCount');
+  const selAll = $('#selAll'), selDone = $('#selDone'), selUndone = $('#selUndone');
+  const selDel = $('#selDel'), selExit = $('#selExit');
   const toastEl = $('#toast');
 
   const TRASH_KEY = 'ddl.trash.v1';
@@ -781,6 +850,11 @@
   let renaming = false;
   let estMin = 0;
   let toastTimer = 0;
+
+  const DONE_PREVIEW = 5;      // 已完成的默认只看最近几条
+  let doneExpanded = false;
+  let selMode = false;         // 多选模式
+  const selIds = new Set();
 
   const PRESETS = [0, 15, 30, 60, 180, 1440, 2880, 4320];
 
@@ -1316,8 +1390,13 @@
       if (it.est) metaHTML += `<span class="est${cls}">需 ${dur(it.est)}</span>`;
     }
 
-    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}" data-id="${it.id}">
-      <button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>
+    const picked = selMode && selIds.has(it.id);
+    const left = selMode
+      ? `<button class="pick${picked ? ' on' : ''}" type="button" aria-label="${picked ? '取消选择' : '选择'}"><i></i></button>`
+      : `<button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>`;
+
+    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}${picked ? ' sel' : ''}" data-id="${it.id}">
+      ${left}
       <div class="txt">
         <div class="title">${esc(it.title)}</div>
         <div class="meta">${metaHTML}</div>
@@ -1329,18 +1408,25 @@
     const now = Date.now();
     const act = items.filter(x => !x.done).sort((a, b) => a.due - b.due);
     const dn = items.filter(x => x.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    const shown = doneExpanded ? dn : dn.slice(0, DONE_PREVIEW);
     const open = doneBox.open;
 
     list.innerHTML = act.length
       ? act.map(x => rowHTML(x, now)).join('')
       : '<li class="empty">还没有待办</li>';
-    doneList.innerHTML = dn.map(x => rowHTML(x, now)).join('');
+    doneList.innerHTML = shown.map(x => rowHTML(x, now)).join('');
     initEstWheels(list);
 
     doneBox.hidden = dn.length === 0;
     doneBox.open = open;
     summary.textContent = `已完成 ${dn.length}`;
     clearBtn.hidden = dn.length === 0;
+    doneSelect.hidden = selMode || dn.length === 0;
+    doneMore.hidden = dn.length <= DONE_PREVIEW;
+    doneMore.textContent = doneExpanded ? '收起' : `展开全部 ${dn.length} 条`;
+    selOpen.hidden = selMode;
+    selBar.hidden = !selMode;
+    updateSelBar();
     renderTrashCount();
   }
 
@@ -1453,6 +1539,11 @@
     if (!row) return;
     const it = items.find(x => x.id === row.dataset.id);
     if (!it) return;
+
+    if (selMode) {
+      togglePick(it.id);
+      return;
+    }
 
     if (e.target.closest('.act-rename')) {
       renaming = true;
@@ -1671,6 +1762,99 @@
       renderTrashCount();
     });
   });
+
+  /* ---------------- 多选 ---------------- */
+  function updateSelBar() {
+    const picked = items.filter(x => selIds.has(x.id));
+    const doneN = picked.filter(x => x.done).length;
+
+    selCount.textContent = picked.length
+      ? `已选 ${picked.length} 条` + (doneN ? `（其中已完成 ${doneN}）` : '')
+      : '点条目选中，可批量完成或删除';
+    selDone.hidden = picked.length === doneN;        // 没有未完成的就不显示「完成」
+    selUndone.hidden = doneN === 0;
+    selAll.textContent = items.length && picked.length === items.length ? '全不选' : '全选';
+    selDel.disabled = picked.length === 0;
+  }
+
+  // 只改类名不重建列表：重建会让连点丢事件，还会让页面闪一下
+  function refreshPicks() {
+    for (const row of document.querySelectorAll('.row')) {
+      const on = selIds.has(row.dataset.id);
+      const btn = row.querySelector('.pick');
+      if (!btn) continue;
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-label', on ? '取消选择' : '选择');
+      row.classList.toggle('sel', on);
+    }
+  }
+
+  function togglePick(id) {
+    if (selIds.has(id)) selIds.delete(id);
+    else selIds.add(id);
+    refreshPicks();
+    updateSelBar();
+  }
+
+  function setSelMode(on) {
+    selMode = !!on;
+    selIds.clear();
+    editing = null;
+    renaming = false;
+    document.body.classList.toggle('sel', selMode);
+    render();
+  }
+
+  function bulkSetDone(done) {
+    const picked = items.filter(x => selIds.has(x.id) && x.done !== done);
+    if (!picked.length) return;
+    const now = Date.now();
+    for (const it of picked) {
+      it.done = done;
+      it.doneAt = done ? now : 0;
+    }
+    save();
+    const n = picked.length;
+    setSelMode(false);
+    toast(done ? `已完成 ${n} 条` : `已取消完成 ${n} 条`);
+  }
+
+  function bulkDelete() {
+    const picked = items.filter(x => selIds.has(x.id));
+    if (!picked.length) return;
+
+    const names = picked.slice(0, 3).map(x => `「${x.title}」`).join('、');
+    const body = picked.length > 3
+      ? `${names} 等 ${picked.length} 条将移入「最近删除」，可以在那里恢复。`
+      : `${names} 将移入「最近删除」，可以在那里恢复。`;
+
+    askConfirm(`删除 ${picked.length} 条待办`, body, '删除').then(ok => {
+      if (!ok) return;
+      const ids = new Set(picked.map(x => x.id));
+      items = items.filter(x => !ids.has(x.id));
+      for (const it of picked) trash.unshift({ ...it, deletedAt: Date.now() });
+      if (trash.length > trashMax) trash = trash.slice(0, trashMax);
+      save();
+      saveTrash();
+      setSelMode(false);
+      toast(`已删除 ${picked.length} 条`);
+      if (!trashModal.hidden) renderTrash();
+    });
+  }
+
+  doneSelect.addEventListener('click', () => setSelMode(true));
+  selOpen.addEventListener('click', () => setSelMode(true));
+  selExit.addEventListener('click', () => setSelMode(false));
+  selAll.addEventListener('click', () => {
+    if (selIds.size === items.length) selIds.clear();
+    else for (const it of items) selIds.add(it.id);
+    refreshPicks();
+    updateSelBar();
+  });
+  selDone.addEventListener('click', () => bulkSetDone(true));
+  selUndone.addEventListener('click', () => bulkSetDone(false));
+  selDel.addEventListener('click', bulkDelete);
+  doneMore.addEventListener('click', () => { doneExpanded = !doneExpanded; render(); });
 
   /* ---------------- 备份 / 迁移 ----------------
      导出：{ app, v, exportedAt, items, trash, settings }
@@ -1915,7 +2099,9 @@
   });
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !bkModal.hidden) closeBackup();
+    if (e.key !== 'Escape') return;
+    if (!bkModal.hidden) { closeBackup(); return; }
+    if (selMode) setSelMode(false);
   });
 
   /* ---------------- 检查更新 ---------------- */
