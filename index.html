@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261021-1649">
+<meta name="build" content="20261023-2049">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -1433,7 +1433,9 @@
     renderEstRow(0);
     applyDue(d, defaultDueMs());
     render();
-    t.focus();
+    // 添加完不再把焦点塞回标题框：手机上会自动弹键盘，等于逼着继续输下一条。
+    // 用回车提交时焦点本来还在输入框里，这里也一并收掉。
+    if (document.activeElement === t) t.blur();
   });
 
   function updateWd() {
