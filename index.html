@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>TKtodo</title>
-<meta name="build" content="20261023-2103">
+<meta name="build" content="20261023-2137">
 <style>
   :root{
     --bg:#f5f5f7;
@@ -264,11 +264,17 @@
   .done-bar button{
     min-height:32px; font-size:12.5px; padding:0 12px; border-radius:9px;
   }
-  #doneMore{
+  #doneMore, #listMore{
     display:block; margin:8px auto 14px;
     font-size:13px; min-height:34px; padding:0 14px; border-radius:9px;
   }
-  #doneMore[hidden]{ display:none; }
+  #doneMore[hidden], #listMore[hidden]{ display:none; }
+
+  .sum-hint{
+    margin-left:6px; font-size:12px; color:var(--mute);
+    border:1px solid var(--line); border-radius:999px; padding:1px 8px;
+  }
+  summary:active{ opacity:.55; }
 
   /* ---------- 多选 ---------- */
   .pick{
@@ -290,6 +296,10 @@
     transform:rotate(45deg) translate(-1px,-1px);
   }
   .row.sel{ background:var(--bg); border-radius:10px; }
+  .row.dim{ opacity:.4; }
+  .row.dim .check{ cursor:default; }
+
+  #selTitle{ font-size:13px; font-weight:600; text-align:center; }
 
   #selBar{
     position:fixed; left:50%; transform:translateX(-50%);
@@ -308,8 +318,12 @@
     flex:1 1 auto; min-height:36px; font-size:13px; padding:0 10px; border-radius:10px;
   }
   .sel-acts button[hidden]{ display:none; }
-  body.sel{ padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 196px); }
-  body.sel #toast{ bottom:calc(env(safe-area-inset-bottom, 0px) + 218px); }
+  body.sel{ padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 132px); }
+  /* 多选期间只让底部操作条说话：折叠标题、展开按钮、清空按钮都不响应 */
+  body.sel summary{ pointer-events:none; opacity:.6; }
+  body.sel .done-bar{ display:none; }
+  body.sel #doneMore, body.sel #listMore{ display:none; }
+  body.sel #toast{ bottom:calc(env(safe-area-inset-bottom, 0px) + 150px); }
 
   .est-row{
     display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
@@ -627,16 +641,17 @@
   </form>
 
   <ul id="list"></ul>
+  <button id="listMore" class="ghost" type="button" hidden>展开全部</button>
 
   <div class="tools">
     <button id="calOpen" class="ghost" type="button">导入日历</button>
-    <button id="selOpen" class="ghost" type="button">多选</button>
+    <button id="selOpen" class="ghost" type="button">多选待办</button>
   </div>
 
   <details id="doneBox" hidden>
     <summary id="summary"></summary>
     <div class="done-bar">
-      <button id="doneSelect" class="ghost" type="button">多选</button>
+      <button id="doneSelect" class="ghost" type="button">多选已完成</button>
       <button id="clearDone" class="ghost danger" type="button">清空已完成</button>
     </div>
     <ul id="doneList"></ul>
@@ -776,13 +791,10 @@
   </div>
 
   <div id="selBar" hidden>
-    <span id="selCount">点条目选中，可批量完成或删除</span>
-    <div class="sel-acts sel-scope">
-      <button id="selAllOpen" class="ghost" type="button">全选未完成</button>
-      <button id="selAllDone" class="ghost" type="button">全选已完成</button>
-      <button id="selNone" class="ghost" type="button">清空选择</button>
-    </div>
+    <span id="selTitle">多选</span>
+    <span id="selCount">点条目选中</span>
     <div class="sel-acts">
+      <button id="selAll" class="ghost" type="button">全选</button>
       <button id="selDone" class="ghost" type="button">完成</button>
       <button id="selUndone" class="ghost" type="button">取消完成</button>
       <button id="selDel" class="ghost danger" type="button">删除</button>
@@ -815,10 +827,9 @@
   const bkExport = $('#bkExport'), bkPick = $('#bkPick'), bkFile = $('#bkFile');
   const bkPreview = $('#bkPreview'), bkMerge = $('#bkMerge'), bkReplace = $('#bkReplace');
   const bkText = $('#bkText'), bkPasteGo = $('#bkPasteGo'), bkClose = $('#bkClose');
-  const doneSelect = $('#doneSelect'), doneMore = $('#doneMore');
-  const selOpen = $('#selOpen'), selBar = $('#selBar'), selCount = $('#selCount');
-  const selAllOpen = $('#selAllOpen'), selAllDone = $('#selAllDone'), selNone = $('#selNone');
-  const selDone = $('#selDone'), selUndone = $('#selUndone');
+  const doneSelect = $('#doneSelect'), doneMore = $('#doneMore'), listMore = $('#listMore');
+  const selOpen = $('#selOpen'), selBar = $('#selBar'), selCount = $('#selCount'), selTitle = $('#selTitle');
+  const selAll = $('#selAll'), selDone = $('#selDone'), selUndone = $('#selUndone');
   const selDel = $('#selDel'), selExit = $('#selExit');
   const toastEl = $('#toast');
 
@@ -857,8 +868,11 @@
   let toastTimer = 0;
 
   const DONE_PREVIEW = 5;      // 已完成的默认只看最近几条
+  const OPEN_PREVIEW = 5;      // 待办默认只显示 DDL 最近的几条
   let doneExpanded = false;
+  let openExpanded = false;
   let selMode = false;         // 多选模式
+  let selScope = null;         // 'open' | 'done'，多选只作用在自己那一半
   const selIds = new Set();
 
   const PRESETS = [0, 15, 30, 60, 180, 1440, 2880, 4320];
@@ -1395,12 +1409,13 @@
       if (it.est) metaHTML += `<span class="est${cls}">需 ${dur(it.est)}</span>`;
     }
 
-    const picked = selMode && selIds.has(it.id);
-    const left = selMode
+    const inScope = selMode && (selScope === 'done') === !!it.done;
+    const picked = inScope && selIds.has(it.id);
+    const left = inScope
       ? `<button class="pick${picked ? ' on' : ''}" type="button" aria-label="${picked ? '取消选择' : '选择'}"><i></i></button>`
       : `<button class="check${it.done ? ' on' : ''}" type="button" aria-label="${it.done ? '取消完成' : '完成'}"><i></i></button>`;
 
-    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}${picked ? ' sel' : ''}" data-id="${it.id}">
+    return `<li class="row${it.done ? ' done' : ''}${over ? ' over' : ''}${picked ? ' sel' : ''}${selMode && !inScope ? ' dim' : ''}" data-id="${it.id}">
       ${left}
       <div class="txt">
         <div class="title">${esc(it.title)}</div>
@@ -1414,18 +1429,22 @@
     const act = items.filter(x => !x.done).sort((a, b) => a.due - b.due);
     const dn = items.filter(x => x.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const shown = doneExpanded ? dn : dn.slice(0, DONE_PREVIEW);
+    const shownAct = openExpanded ? act : act.slice(0, OPEN_PREVIEW);
     const open = doneBox.open;
 
     list.innerHTML = act.length
-      ? act.map(x => rowHTML(x, now)).join('')
+      ? shownAct.map(x => rowHTML(x, now)).join('')
       : '<li class="empty">还没有待办</li>';
     doneList.innerHTML = shown.map(x => rowHTML(x, now)).join('');
     initEstWheels(list);
 
     doneBox.hidden = dn.length === 0;
     doneBox.open = open;
-    summary.textContent = `已完成 ${dn.length}`;
+    summary.innerHTML = `已完成 ${dn.length}<span class="sum-hint">${open ? '收起 ▴' : '展开 ▾'}</span>`;
+    summary.setAttribute('aria-expanded', open ? 'true' : 'false');
     clearBtn.hidden = dn.length === 0;
+    listMore.hidden = act.length <= OPEN_PREVIEW;
+    listMore.textContent = openExpanded ? '收起' : `展开全部 ${act.length} 条`;
     doneSelect.hidden = selMode || dn.length === 0;
     doneMore.hidden = dn.length <= DONE_PREVIEW;
     doneMore.textContent = doneExpanded ? '收起' : `展开全部 ${dn.length} 条`;
@@ -1546,6 +1565,7 @@
     if (!it) return;
 
     if (selMode) {
+      if ((selScope === 'done') !== !!it.done) return;   // 另一半在这次多选里完全不动
       togglePick(it.id);
       return;
     }
@@ -1768,25 +1788,19 @@
     });
   });
 
-  /* ---------------- 多选 ---------------- */
+  /* ---------------- 多选（待办 / 已完成 各自独立） ---------------- */
   function updateSelBar() {
     const picked = items.filter(x => selIds.has(x.id));
-    const openTotal = items.length - items.filter(x => x.done).length;
-    const doneTotal = items.filter(x => x.done).length;
-    const pickedOpen = picked.filter(x => !x.done).length;
-    const pickedDone = picked.length - pickedOpen;
+    const scopeItems = items.filter(x => (selScope === 'done') === !!x.done);
+    const allPicked = scopeItems.length > 0 && scopeItems.every(x => selIds.has(x.id));
 
-    selCount.textContent = picked.length
-      ? `已选 ${picked.length} 条（未完成 ${pickedOpen} · 已完成 ${pickedDone}）`
-      : '点条目选中，可批量完成或删除';
+    selTitle.textContent = selScope === 'done' ? '多选已完成' : '多选待办';
+    selCount.textContent = picked.length ? `已选 ${picked.length} 条` : '点条目选中';
 
-    // 两个范围各管各的，互不影响
-    selAllOpen.disabled = openTotal === 0;
-    selAllDone.disabled = doneTotal === 0;
-    selNone.disabled = picked.length === 0;
-
-    selDone.hidden = pickedOpen === 0;               // 没选未完成就不显示「完成」
-    selUndone.hidden = pickedDone === 0;
+    selAll.textContent = allPicked ? '全不选' : '全选';
+    selAll.disabled = scopeItems.length === 0;
+    selDone.hidden = selScope !== 'open';        // 待办区才能标完成
+    selUndone.hidden = selScope !== 'done';      // 已完成区才能取消完成
     selDel.disabled = picked.length === 0;
   }
 
@@ -1809,16 +1823,22 @@
     updateSelBar();
   }
 
-  function setSelMode(on) {
-    selMode = !!on;
+  function setSelMode(scope) {
+    selScope = scope || null;
+    selMode = !!selScope;
     selIds.clear();
     editing = null;
     renaming = false;
+    // 进入多选时把那一半全部展开，保证「全选」看到的和选到的一致
+    if (selScope === 'done') { doneExpanded = true; doneBox.open = true; }
+    if (selScope === 'open') openExpanded = true;
     document.body.classList.toggle('sel', selMode);
     render();
   }
 
   function bulkSetDone(done) {
+    if (!selMode) return;
+    if ((selScope === 'done') === done) return;   // 待办区只能标完成，已完成区只能取消完成
     const picked = items.filter(x => selIds.has(x.id) && x.done !== done);
     if (!picked.length) return;
     const now = Date.now();
@@ -1828,7 +1848,7 @@
     }
     save();
     const n = picked.length;
-    setSelMode(false);
+    setSelMode(null);
     toast(done ? `已完成 ${n} 条` : `已取消完成 ${n} 条`);
   }
 
@@ -1849,27 +1869,20 @@
       if (trash.length > trashMax) trash = trash.slice(0, trashMax);
       save();
       saveTrash();
-      setSelMode(false);
+      setSelMode(null);
       toast(`已删除 ${picked.length} 条`);
       if (!trashModal.hidden) renderTrash();
     });
   }
 
-  doneSelect.addEventListener('click', () => setSelMode(true));
-  selOpen.addEventListener('click', () => setSelMode(true));
-  selExit.addEventListener('click', () => setSelMode(false));
-  selAllOpen.addEventListener('click', () => {
-    for (const it of items) if (!it.done) selIds.add(it.id);
-    refreshPicks();
-    updateSelBar();
-  });
-  selAllDone.addEventListener('click', () => {
-    for (const it of items) if (it.done) selIds.add(it.id);
-    refreshPicks();
-    updateSelBar();
-  });
-  selNone.addEventListener('click', () => {
+  doneSelect.addEventListener('click', () => setSelMode('done'));
+  selOpen.addEventListener('click', () => setSelMode('open'));
+  selExit.addEventListener('click', () => setSelMode(null));
+  selAll.addEventListener('click', () => {
+    const scopeItems = items.filter(x => (selScope === 'done') === !!x.done);
+    const allPicked = scopeItems.length > 0 && scopeItems.every(x => selIds.has(x.id));
     selIds.clear();
+    if (!allPicked) for (const it of scopeItems) selIds.add(it.id);
     refreshPicks();
     updateSelBar();
   });
@@ -1877,6 +1890,8 @@
   selUndone.addEventListener('click', () => bulkSetDone(false));
   selDel.addEventListener('click', bulkDelete);
   doneMore.addEventListener('click', () => { doneExpanded = !doneExpanded; render(); });
+  listMore.addEventListener('click', () => { openExpanded = !openExpanded; render(); });
+  doneBox.addEventListener('toggle', () => render());
 
   /* ---------------- 备份 / 迁移 ----------------
      导出：{ app, v, exportedAt, items, trash, settings }
@@ -2123,7 +2138,7 @@
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if (!bkModal.hidden) { closeBackup(); return; }
-    if (selMode) setSelMode(false);
+    if (selMode) setSelMode(null);
   });
 
   /* ---------------- 检查更新 ---------------- */
